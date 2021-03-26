@@ -1,0 +1,22 @@
+/home/namesty/Documents/dOrg/baseDAO/ligo/haskell/src/Ligo/Util.hs:
+  hash: 34c8532afee2485948c2750c4de3fcee0260f5dcc4534c00b73dafbb16893f82
+/home/namesty/Documents/dOrg/baseDAO/ligo/haskell/README.md:
+  hash: 5e4b56c97613ffd3156d607383efe179b9585256211ad6b9c1d586f26e821ae9
+/home/namesty/Documents/dOrg/baseDAO/ligo/haskell/package.yaml:
+  hash: 3f7183947ef7ad001a6c005dc52cd176425c9fd8f42548a4cb66068198f24c2a
+? /home/namesty/Documents/dOrg/baseDAO/ligo/haskell/.stack-work/dist/x86_64-linux-tinfo6/Cabal-3.0.1.0/build/autogen/Paths_baseDAO_ligo_meta.hs
+: hash: d1a51ac0604e9332ce317fd8a619e66005949910bceca20fb43c433d1c513046
+/home/namesty/.stack/programs/x86_64-linux/ghc-tinfo6-8.8.3/lib/ghc-8.8.3/include/ghcversion.h:
+  hash: 40d1b759f485f1cd5a54141a6412691ac2b76930507289a16a6a7b89b045b4d2
+? /home/namesty/Documents/dOrg/baseDAO/ligo/haskell/.stack-work/dist/x86_64-linux-tinfo6/Cabal-3.0.1.0/build/autogen/cabal_macros.h
+: hash: 5781ea64608b26690141f7161be54e424687a4113ead940ebc7a7f7b7f67c6e3
+/usr/include/stdc-predef.h:
+  hash: 64fdf694f7b3d51ec6c45c06dcb71ebbe9455742d3ea673012016668853d3bff
+/home/namesty/Documents/dOrg/baseDAO/ligo/haskell/src/Ligo/BaseDAO/TZIP16Metadata.hs:
+  hash: 3ed670b8c54ec806f44795a62782c4bacb3a30e1bb3431a2281cfed0786f4ce3
+/home/namesty/Documents/dOrg/baseDAO/ligo/haskell/src/Ligo/BaseDAO/ConfigDesc.hs:
+  hash: 98a28cac7d7a8ce7e6d2f7a5c6bbdc4bb6191b399c7b5c6e04ccb439aeb03b38
+/home/namesty/Documents/dOrg/baseDAO/ligo/haskell/src/Ligo/BaseDAO/Types.hs:
+  hash: 9eefcfc1c7a09f5cba8ab65fdef2e49e06b21014f49a0081e969881e28de25d8
+/home/namesty/Documents/dOrg/baseDAO/ligo/haskell/baseDAO-ligo-meta.cabal:
+  hash: 15aecea8b025f6179333c2356437267c1cd9c3d49f94bf564b4d7f604f18ef55
