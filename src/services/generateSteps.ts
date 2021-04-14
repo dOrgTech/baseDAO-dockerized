@@ -25,6 +25,13 @@ export const generateSteps = async (template: Template, storage: Storage, origin
   const stepsPath = join(ligoDirPath, stepsPathArgument)
   const steps: Record<string, string> = {};
 
+  try {
+    rimraf.sync(storagePath)
+    rimraf.sync(stepsPath)
+  } catch(e) {
+    console.log(e)
+  }
+
   await runCommand(
     `cd ${join(process.cwd(), "ligo")} && ls && make ${Object.keys(storage).map(
       (key) => `${key}=${storage[key]}`
@@ -42,9 +49,6 @@ export const generateSteps = async (template: Template, storage: Storage, origin
   })
 
   const storageOutput = readFileSync(storagePath, "utf-8")
-
-  rimraf.sync(storagePath)
-  rimraf.sync(stepsPath)
 
   return { steps, storage: storageOutput }
 };
