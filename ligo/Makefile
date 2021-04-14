@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2020 TQ Tezos
+# SPDX-FileCopyrightText: 2021 TQ Tezos
 # SPDX-License-Identifier: LicenseRef-MIT-TQ
 
 # Ligo executable
@@ -34,8 +34,10 @@ escape_quote = $(subst ','\'',$(1))
 
 # Where to put build files
 OUT ?= out
+# Where to put typescript files
+TS_OUT ?= typescript
 
-.PHONY: all clean test
+.PHONY: all clean test typescript
 
 all: \
 	$(OUT)/baseDAO.tz \
@@ -135,10 +137,20 @@ originate-steps: $(OUT)/baseDAO.tz
 	#
 
 test: all
-	$(MAKE) -C .. test PACKAGE=baseDAO-ligo-meta \
+	$(MAKE) -C lorentz test PACKAGE=baseDAO-ligo-meta \
     BASEDAO_LIGO_PATH=../$(OUT)/baseDAO.tz \
     REGISTRY_STORAGE_PATH=../$(OUT)/registryDAO_storage.tz \
     TREASURY_STORAGE_PATH=../$(OUT)/treasuryDAO_storage.tz
 
+typescript: all
+	$(MAKE) -C lorentz build PACKAGE=baseDAO-ligo-meta \
+		STACK_DEV_OPTIONS="--fast --ghc-options -Wwarn" \
+    BASEDAO_LIGO_PATH=../$(OUT)/baseDAO.tz \
+    REGISTRY_STORAGE_PATH=../$(OUT)/registryDAO_storage.tz \
+    TREASURY_STORAGE_PATH=../$(OUT)/treasuryDAO_storage.tz
+	rm -rf $(TS_OUT)/baseDAO/src/generated/*
+	stack exec -- baseDAO-ligo-meta generate-typescript --target=$(TS_OUT)/baseDAO/src/generated/
+
 clean:
 	rm -rf $(OUT)
+	rm -rf $(TS_OUT)/baseDAO/src/generated/*

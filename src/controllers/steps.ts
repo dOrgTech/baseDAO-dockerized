@@ -1,5 +1,5 @@
 import { Request, Response, Router } from "express";
-import { generateSteps, Template, Storage } from "../services/generateSteps";
+import { generateSteps, Template } from "../services/generateSteps";
 
 const router = Router();
 

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2020 TQ Tezos
+// SPDX-FileCopyrightText: 2021 TQ Tezos
 // SPDX-License-Identifier: LicenseRef-MIT-TQ
 
 // Corresponds to Types.hs module
@@ -95,12 +95,6 @@ type counter =
 
 type nonce = nat
 
-type migration_status =
-  [@layout:comb]
-  | Not_in_migration
-  | MigratingTo of address
-  | MigratedTo of address
-
 // Represents whether a voter has voted against (false) or for (true) a given proposal.
 type vote_type = bool
 
@@ -130,7 +124,15 @@ type proposal =
   }
 
 type voting_period = nat
-type quorum_threshold = nat
+
+// Quorum threshold that a proposal needs to meet in order to be accepted,
+// expressed as a fraction of the total_supply of frozen tokens.
+// Invariant: numerator < denominator
+type quorum_threshold =
+  [@layout:comb]
+  { numerator : nat
+  ; denominator : nat
+  }
 
 type permit =
   { key : key
@@ -158,7 +160,6 @@ type storage =
   ; admin : address
   ; pending_owner : address
   ; metadata : metadata_map
-  ; migration_status : migration_status
   ; voting_period : voting_period
   ; quorum_threshold : quorum_threshold
   ; extra : contract_extra
@@ -180,10 +181,7 @@ type unfreeze_param = nat
 
 type transfer_ownership_param = address
 
-type migrate_param = address
-
 type voting_period = nat
-type quorum_threshold = nat
 
 type custom_ep_param = (string * bytes)
 
@@ -242,8 +240,6 @@ type forbid_xtz_params =
   | Drop_proposal of proposal_key
   | Transfer_ownership of transfer_ownership_param
   | Accept_ownership of unit
-  | Migrate of migrate_param
-  | Confirm_migration of unit
   | Vote of vote_param_permited list
   | Set_fixed_fee_in_token of nat
   | Set_voting_period of voting_period
@@ -262,22 +258,17 @@ type forbid_xtz_params =
 type allow_xtz_params =
   | CallCustom of custom_ep_param
   | Propose of propose_params
-
-(*
- * Entrypoints that should not work after migration.
- * Separated into entrypoints that forbid Tz transfers,
- * and those that allow Tz transfers
- *)
-type migratable_parameter =
-  (allow_xtz_params, "", forbid_xtz_params, "") michelson_or
+  | Transfer_contract_tokens of transfer_contract_tokens_param
 
 (*
  * Full parameter of the contract.
- * Made up of entrypoints that could get migrated, and 'Transfer_contract_tokens'
- * which should keep working even after migration.
+ * Separated into entrypoints that forbid Tz transfers,
+ * and those that allow Tz transfers
  *)
 type parameter =
-  (migratable_parameter, "", transfer_contract_tokens_param, "Transfer_contract_tokens") michelson_or
+  (allow_xtz_params, "", forbid_xtz_params, "") michelson_or
+
+
 
 type custom_entrypoints = (string, bytes) map
 
@@ -295,8 +286,8 @@ type config =
 
   ; max_proposals : nat
   ; max_votes : nat
-  ; max_quorum_threshold : nat
-  ; min_quorum_threshold : nat
+  ; max_quorum_threshold : quorum_threshold
+  ; min_quorum_threshold : quorum_threshold
   ; max_voting_period : nat
   ; min_voting_period : nat
 

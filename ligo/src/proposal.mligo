@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2020 TQ Tezos
+// SPDX-FileCopyrightText: 2021 TQ Tezos
 // SPDX-License-Identifier: LicenseRef-MIT-TQ
 
 // Corresponds to Proposal.hs module
@@ -52,6 +52,31 @@ let ensure_proposal_is_unique (propose_params, store : propose_params * storage)
   if Map.mem proposal_key store.proposals
     then (failwith("PROPOSAL_NOT_UNIQUE") : proposal_key)
     else proposal_key
+
+// Utility function for quorum_threshold comparison.
+// Returns two nats, which can be compared to check for the desired condition.
+// e.g. nat_1 > nat_2 implies that qt_1 > qt_2
+let cmp_qt(qt_1, qt_2 : quorum_threshold * quorum_threshold): (nat * nat) =
+  // Calculated this way because there is no support for floating point operations
+  (qt_1.numerator * qt_2.denominator, qt_1.denominator * qt_2.numerator)
+
+[@inline]
+// Returns true iff the first quorum_threshold is strictly bigger than the second.
+let is_gt_qt(qt_1, qt_2 : quorum_threshold * quorum_threshold): bool =
+  let (nat_1, nat_2) = cmp_qt (qt_1, qt_2) in
+  nat_1 > nat_2
+
+[@inline]
+// Returns true iff the first quorum_threshold is bigger or equal than the second.
+let is_ge_qt(qt_1, qt_2 : quorum_threshold * quorum_threshold): bool =
+  let (nat_1, nat_2) = cmp_qt (qt_1, qt_2) in
+  nat_1 >= nat_2
+
+[@inline]
+// Returns true iff the first quorum_threshold is strictly less than the second.
+let is_le_qt(qt_1, qt_2 : quorum_threshold * quorum_threshold): bool =
+  let (nat_1, nat_2) = cmp_qt (qt_1, qt_2) in
+  nat_1 <= nat_2
 
 // -----------------------------------------------------------------
 // Freeze history operations
@@ -107,7 +132,7 @@ let check_is_proposal_valid (config, propose_params, store : config * propose_pa
     else (failwith("FAIL_PROPOSAL_CHECK") : storage)
 
 [@inline]
-let check_proposal_limit_reached (config, propose_params, store : config * propose_params * storage): storage =
+let check_proposal_limit_reached (config, store : config * storage): storage =
   if config.max_proposals <= List.length store.proposal_key_list_sort_by_date
     then (failwith("MAX_PROPOSALS_REACHED") : storage)
     else store
@@ -164,7 +189,7 @@ let add_proposal (propose_params, store : propose_params * storage): storage =
 
 let propose (param, config, store : propose_params * config * storage): return =
   let store = check_is_proposal_valid (config, param, store) in
-  let store = check_proposal_limit_reached (config, param, store) in
+  let store = check_proposal_limit_reached (config, store) in
   let amount_to_freeze = param.frozen_token + store.fixed_proposal_fee_in_token in
   let store = stake_tk(amount_to_freeze, Tezos.sender, store) in
   let store = add_proposal (param, store) in
@@ -209,7 +234,7 @@ let vote(votes, config, store : vote_param_permited list * config * storage): re
     let proposal = check_if_proposal_exist (param.proposal_key, store) in
     let vote_param = check_vote_limit_reached (config, proposal, param) in
     let store = ensure_proposal_voting_period (proposal, store) in
-    let store = submit_vote (proposal, param, author, store) in
+    let store = submit_vote (proposal, vote_param, author, store) in
     store
     in
   ( ([] : operation list)
@@ -248,34 +273,16 @@ let set_voting_period(new_period, config, store : voting_period * config * stora
   let store = { store with voting_period = new_period; last_period_change = vp_log } in
   (([] : operation list), store)
 
-// Update quroum_threshold. The new quorum_threshold affects
+// Update quorum_threshold. The new quorum_threshold affects
 // all ongoing and new proposals.
 [@inline]
 let set_quorum_threshold(new_threshold, config, store : quorum_threshold * config * storage): return =
   let store = authorize_admin store in
-  let store =
-    if   config.max_quorum_threshold < new_threshold
-      || config.min_quorum_threshold > new_threshold
-      then (failwith("OUT_OF_BOUND_QUORUM_THRESHOLD") : storage)
-      else store
-    in
-  let store = { store with quorum_threshold = new_threshold } in
-  (([] : operation list), store)
-
-// Used in "flush". See the Haskell version for explanation.
-[@inline]
-let check_balance_less_then_frozen_value
-    (unfreeze_value, addr, proposal, proposal_key, store
-      : nat * address * proposal * proposal_key * storage): nat =
-  let actual_frozen_value =
-    match Map.find_opt (addr, store.frozen_token_id) store.ledger with
-      None ->
-        (failwith("PROPOSER_NOT_EXIST_IN_LEDGER") : nat)
-    | Some value -> value
-    in
-  if unfreeze_value > actual_frozen_value
-    then actual_frozen_value
-    else unfreeze_value
+  if   is_le_qt (new_threshold, config.max_quorum_threshold)
+    && is_ge_qt (new_threshold, config.min_quorum_threshold)
+    && (new_threshold.numerator < new_threshold.denominator)
+  then (nil_op, { store with quorum_threshold = new_threshold })
+  else (failwith("OUT_OF_BOUND_QUORUM_THRESHOLD") : (operation list * storage))
 
 [@inline]
 let burn_frozen_token (tokens, addr, store : nat * address * storage): storage =
@@ -290,11 +297,10 @@ let burn_frozen_token (tokens, addr, store : nat * address * storage): storage =
 [@inline]
 let burn_what_possible (desired_burn_amount, frozen_tokens, addr, store : nat * nat * address * storage): storage =
   let to_burn =
-    match Michelson.is_nat(frozen_tokens - desired_burn_amount) with
-      Some value_ -> desired_burn_amount
-    | None -> frozen_tokens
-    in
-  burn_frozen_token (to_burn, addr, store)
+    if frozen_tokens >= desired_burn_amount
+    then desired_burn_amount
+    else frozen_tokens
+  in burn_frozen_token (to_burn, addr, store)
 
 let unstake_tk(token_amount, addr, store : nat * address * storage): storage =
   let current_period = get_current_period_num(store.last_period_change, store.voting_period) in
@@ -308,8 +314,8 @@ let unstake_tk(token_amount, addr, store : nat * address * storage): storage =
           ("NOT_ENOUGH_STAKED_TOKENS", ()) : storage)
 
 let unfreeze_proposer_and_voter_token
-  (rejected_proposal_return, is_accepted, proposal, proposal_key, store :
-    (proposal * contract_extra -> nat) * bool * proposal * proposal_key * storage): storage =
+  (rejected_proposal_return, is_accepted, proposal, store :
+    (proposal * contract_extra -> nat) * bool * proposal * storage): storage =
   // unfreeze_proposer_token
   let (tokens, store) =
     if is_accepted
@@ -329,7 +335,7 @@ let unfreeze_proposer_and_voter_token
             in
       (tokens, store)
     in
-  let store = unstake_tk(proposal.proposer_frozen_token, proposal.proposer, store) in
+  let store = unstake_tk(tokens, proposal.proposer, store) in
 
   // unfreeze_voter_token
   let do_unfreeze = fun
@@ -346,7 +352,17 @@ let is_voting_period_over (proposal, store : proposal * storage): bool =
 
 [@inline]
 let do_total_vote_meet_quorum_threshold (proposal, store : proposal * storage): bool =
-  store.quorum_threshold <= proposal.upvotes + proposal.downvotes
+  let votes_placed = proposal.upvotes + proposal.downvotes in
+  let total_supply =
+        match Map.find_opt store.frozen_token_id store.total_supply with
+        | Some v -> v
+        | None -> 0n
+  in
+  // Note: this is equivalent to checking that the number of votes placed is
+  // bigger or equal than the total supply of frozen tokens multiplied by the
+  // quorum_threshold proportion.
+  let reached_quorum = {numerator = votes_placed; denominator = total_supply} in
+  is_ge_qt(reached_quorum, store.quorum_threshold)
 
 // Delete a proposal from 'sProposalKeyListSortByDate'
 [@inline]
@@ -371,7 +387,7 @@ let handle_proposal_is_over
                && proposal.upvotes > proposal.downvotes
     in
     let store = unfreeze_proposer_and_voter_token
-          (config.rejected_proposal_return_value, cond, proposal, proposal_key, store) in
+          (config.rejected_proposal_return_value, cond, proposal, store) in
     let (new_ops, store) =
       if cond
       then
@@ -419,7 +435,7 @@ let drop_proposal (proposal_key, config, store : proposal_key * config * storage
       && proposal.upvotes > proposal.downvotes
     then
       let store = unfreeze_proposer_and_voter_token
-            (config.rejected_proposal_return_value, true, proposal, proposal_key, store) in
+            (config.rejected_proposal_return_value, true, proposal, store) in
       let store = delete_proposal (proposal.start_date, proposal_key, store) in
       (([] : operation list), store)
     else
@@ -428,7 +444,7 @@ let drop_proposal (proposal_key, config, store : proposal_key * config * storage
     (failwith("FAIL_DROP_PROPOSAL_NOT_OVER") : return)
 
 
-let freeze (amt, config, store : freeze_param * config * storage) : return =
+let freeze (amt, store : freeze_param * storage) : return =
   let addr = Tezos.sender in
   let (ledger, total_supply) = freeze_on_ledger (amt, addr, store.ledger, store.total_supply, store.unfrozen_token_id, store.frozen_token_id) in
 
@@ -446,7 +462,7 @@ let freeze (amt, config, store : freeze_param * config * storage) : return =
     ; freeze_history = Big_map.update addr (Some(new_freeze_history_for_address)) store.freeze_history
   })
 
-let unfreeze (amt, config, store : unfreeze_param * config * storage) : return =
+let unfreeze (amt, store : unfreeze_param * storage) : return =
   let addr = Tezos.sender in
   let current_period = get_current_period_num(store.last_period_change, store.voting_period) in
 

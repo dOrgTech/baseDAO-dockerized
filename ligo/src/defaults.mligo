@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2020 TQ Tezos
+// SPDX-FileCopyrightText: 2021 TQ Tezos
 // SPDX-License-Identifier: LicenseRef-MIT-TQ
 
 #include "types.mligo"
@@ -10,8 +10,8 @@ let default_config : config = {
 
     max_proposals = 500n;
     max_votes = 1000n;
-    max_quorum_threshold = 1000n;
-    min_quorum_threshold = 1n;
+    max_quorum_threshold = {numerator = 99n; denominator = 100n}; // 99%
+    min_quorum_threshold = {numerator = 1n; denominator = 100n}; // 1%
     max_voting_period = 2592000n; // 60 * 60 * 24 * 30
     min_voting_period = 1n;
     custom_entrypoints = (Map.empty : custom_entrypoints);
@@ -24,9 +24,8 @@ let default_storage (admin , token_address , now_val, metadata : address * addre
     admin = admin;
     pending_owner = admin;
     metadata = metadata;
-    migration_status = Not_in_migration;
     voting_period = 11n;
-    quorum_threshold = 2n;
+    quorum_threshold = {numerator = 1n; denominator = 10n}; // 10%
     extra = (Map.empty : (string, bytes) map);
     proposals = (Big_map.empty : (proposal_key, proposal) big_map);
     proposal_key_list_sort_by_date = (Set.empty : (timestamp * proposal_key) set);

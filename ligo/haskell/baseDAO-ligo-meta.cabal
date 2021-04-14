@@ -5,11 +5,11 @@ cabal-version: 2.2
 -- see: https://github.com/sol/hpack
 
 name:           baseDAO-ligo-meta
-version:        0.1.0.0
-description:    Tools and tests for LIGO version of the contract.
+version:        0.2.0.0
+description:    Tools and tests for the LIGO baseDAO contract.
 author:         Serokell, Tocqueville Group
 maintainer:     Serokell, Tocqueville Group
-copyright:      2020 TQ Tezos
+copyright:      2021 TQ Tezos
 license:        MIT
 license-file:   LICENSE
 build-type:     Simple
@@ -22,9 +22,10 @@ source-repository head
 
 library
   exposed-modules:
-      Ligo.BaseDAO.ConfigDesc
+      Ligo.BaseDAO.Common.Types
       Ligo.BaseDAO.Types
       Ligo.BaseDAO.TZIP16Metadata
+      Ligo.Typescript
       Ligo.Util
   other-modules:
       Paths_baseDAO_ligo_meta
@@ -36,7 +37,6 @@ library
   ghc-options: -Weverything -Wno-missing-exported-signatures -Wno-missing-import-lists -Wno-missed-specialisations -Wno-all-missed-specialisations -Wno-unsafe -Wno-safe -Wno-missing-local-signatures -Wno-monomorphism-restriction -Wno-implicit-prelude -Wno-unused-packages -Wno-prepositive-qualified-module -Wno-missing-safe-haskell-mode -Wno-unused-do-bind
   build-depends:
       base-noprelude >=4.7 && <5
-    , baseDAO
     , cleveland
     , containers
     , directory
@@ -50,6 +50,7 @@ library
     , morley-prelude
     , named
     , template-haskell
+    , text
     , universum
   default-language: Haskell2010
 
@@ -64,9 +65,10 @@ executable baseDAO-ligo-meta
   build-depends:
       aeson-pretty
     , base-noprelude >=4.7 && <5
-    , baseDAO
     , baseDAO-ligo-meta
+    , fmt
     , morley
+    , morley-ledgers
     , morley-prelude
     , optparse-applicative
     , universum
@@ -78,12 +80,17 @@ test-suite baseDAO-test
   other-modules:
       Ligo.BaseDAO.Contract
       Test.Ligo.BaseDAO.Common
+      Test.Ligo.BaseDAO.FA2
       Test.Ligo.BaseDAO.Integrational.Common
       Test.Ligo.BaseDAO.Integrational.Management
       Test.Ligo.BaseDAO.Integrational.Proposal
       Test.Ligo.BaseDAO.Management
       Test.Ligo.BaseDAO.OffChainViews
       Test.Ligo.BaseDAO.Proposal
+      Test.Ligo.BaseDAO.Proposal.Bounds
+      Test.Ligo.BaseDAO.Proposal.Config
+      Test.Ligo.BaseDAO.Proposal.Proposal
+      Test.Ligo.BaseDAO.Proposal.Vote
       Test.Ligo.BaseDAO.Token
       Test.Ligo.BaseDAO.Token.FA2
       Test.Ligo.BaseDAO.Types
@@ -99,15 +106,16 @@ test-suite baseDAO-test
   build-depends:
       HUnit
     , base-noprelude >=4.7 && <5
-    , baseDAO
     , baseDAO-ligo-meta
     , bytestring
     , cleveland
     , containers
     , fmt
+    , lens
     , lorentz
     , morley
     , morley-ledgers
+    , morley-metadata
     , morley-prelude
     , named
     , o-clock
