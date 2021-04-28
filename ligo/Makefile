@@ -31,6 +31,8 @@ ORIGINATE_STEPS ?= $(LARGE_ORIGINATOR) steps
 
 # Utility function to escape single quotes
 escape_quote = $(subst ','\'',$(1))
+# Utility function to escape double quotes
+escape_double_quote = $(subst $\",$\\",$(1))
 
 # Where to put build files
 OUT ?= out
@@ -65,19 +67,45 @@ endif
 	#
 
 $(OUT)/trivialDAO_storage.tz : admin_address = tz1QozfhaUW4wLnohDo6yiBUmh7cPCSXE9Af
-$(OUT)/trivialDAO_storage.tz : token_address = tz1QozfhaUW4wLnohDo6yiBUmh7cPCSXE9Af
+$(OUT)/trivialDAO_storage.tz : governance_token_address = KT1RdwP8XJPjFyGoUsXFQnQo1yNm6gUqVdp5
+$(OUT)/trivialDAO_storage.tz : governance_token_id = 0n
 $(OUT)/trivialDAO_storage.tz : now_val = Tezos.now
 $(OUT)/trivialDAO_storage.tz : metadata_map = (Big_map.empty : metadata_map)
+$(OUT)/trivialDAO_storage.tz : fixed_proposal_fee_in_token = 0n
+$(OUT)/trivialDAO_storage.tz : ledger = ([] : ledger_list)
+$(OUT)/trivialDAO_storage.tz : quorum_threshold = {numerator = 1n; denominator = 10n}
+$(OUT)/trivialDAO_storage.tz : voting_period = 11n
 $(OUT)/trivialDAO_storage.tz: src/**
 	# ============== Compiling TrivialDAO storage ============== #
 	mkdir -p $(OUT)
-	$(BUILD_STORAGE) --output-file $(OUT)/trivialDAO_storage.tz src/base_DAO.mligo base_DAO_contract 'default_full_storage(("$(admin_address)": address), ("$(token_address)": address), $(now_val), $(metadata_map))'
+	$(BUILD_STORAGE) --output-file $(OUT)/trivialDAO_storage.tz \
+      src/base_DAO.mligo base_DAO_contract "default_full_storage( \
+        { storage_data = \
+          { admin = (\"$(admin_address)\" : address) \
+          ; governance_token = \
+            { address = (\"$(governance_token_address)\" : address) \
+            ; token_id = $(governance_token_id) \
+            } \
+          ; now_val = $(now_val) \
+          ; metadata_map = $(call escape_double_quote,$(metadata_map)) \
+          ; ledger_lst = $(call escape_double_quote,$(ledger)) \
+          ; quorum_threshold = $(quorum_threshold) \
+          ; voting_period = $(voting_period) \
+          } \
+        ; config_data = \
+          { max_quorum = {numerator = 99n; denominator = 100n} \
+          ; min_quorum = {numerator = 1n; denominator = 100n} \
+          ; max_period = 2592000n \
+          ; min_period = 1n \
+          } \
+        })"
 	# ================= Compilation successful ================= #
 	# See "$(OUT)/trivialDAO_storage.tz" for compilation result  #
 	#
 
 $(OUT)/registryDAO_storage.tz : admin_address = tz1QozfhaUW4wLnohDo6yiBUmh7cPCSXE9Af
-$(OUT)/registryDAO_storage.tz : token_address = tz1QozfhaUW4wLnohDo6yiBUmh7cPCSXE9Af
+$(OUT)/registryDAO_storage.tz : governance_token_address = KT1RdwP8XJPjFyGoUsXFQnQo1yNm6gUqVdp5
+$(OUT)/registryDAO_storage.tz : governance_token_id = 0n
 $(OUT)/registryDAO_storage.tz : frozen_scale_value = 1n
 $(OUT)/registryDAO_storage.tz : frozen_extra_value = 0n
 $(OUT)/registryDAO_storage.tz : max_proposal_size = 100n
@@ -87,16 +115,49 @@ $(OUT)/registryDAO_storage.tz : min_xtz_amount = 0mutez
 $(OUT)/registryDAO_storage.tz : max_xtz_amount = 100mutez
 $(OUT)/registryDAO_storage.tz : now_val = Tezos.now
 $(OUT)/registryDAO_storage.tz : metadata_map = (Big_map.empty : metadata_map)
+$(OUT)/registryDAO_storage.tz : fixed_proposal_fee_in_token = 0n
+$(OUT)/registryDAO_storage.tz : ledger = ([] : ledger_list)
+$(OUT)/registryDAO_storage.tz : quorum_threshold = {numerator = 1n; denominator = 10n}
+$(OUT)/registryDAO_storage.tz : voting_period = 11n
 $(OUT)/registryDAO_storage.tz: src/**
 	# ============== Compiling RegistryDAO storage ============== #
 	mkdir -p $(OUT)
-	$(BUILD_STORAGE) --output-file $(OUT)/registryDAO_storage.tz src/registryDAO.mligo base_DAO_contract 'default_registry_DAO_full_storage(("$(admin_address)": address), ("$(token_address)": address), ${frozen_scale_value}, $(frozen_extra_value), $(max_proposal_size), $(slash_scale_value), $(slash_division_value), $(min_xtz_amount), $(min_xtz_amount), $(now_val), $(metadata_map))'
+	$(BUILD_STORAGE) --output-file $(OUT)/registryDAO_storage.tz \
+      src/registryDAO.mligo base_DAO_contract "default_registry_DAO_full_storage( \
+        { base_data = \
+          { storage_data = \
+            { admin = (\"$(admin_address)\" : address) \
+            ; governance_token = \
+              { address = (\"$(governance_token_address)\" : address) \
+              ; token_id = $(governance_token_id) \
+              } \
+            ; now_val = $(now_val) \
+            ; metadata_map = $(call escape_double_quote,$(metadata_map)) \
+            ; ledger_lst = $(call escape_double_quote,$(ledger)) \
+            ; quorum_threshold = $(quorum_threshold) \
+            ; voting_period = $(voting_period) \
+            } \
+          ; config_data = \
+            { max_quorum = {numerator = 99n; denominator = 100n} \
+            ; min_quorum = {numerator = 1n; denominator = 100n} \
+            ; max_period = 2592000n \
+            ; min_period = 1n} \
+            } \
+          ; frozen_scale_value = $(frozen_scale_value) \
+          ; frozen_extra_value = $(frozen_extra_value) \
+          ; max_proposal_size = $(max_proposal_size) \
+          ; slash_scale_value = $(slash_scale_value) \
+          ; slash_division_value = $(slash_division_value) \
+          ; min_xtz_amount = $(min_xtz_amount) \
+          ; max_xtz_amount = $(max_xtz_amount) \
+          })"
 	# ================= Compilation successful ================= #
 	# See "$(OUT)/registryDAO_storage.tz" for compilation result #
 	#
 
 $(OUT)/treasuryDAO_storage.tz : admin_address = tz1QozfhaUW4wLnohDo6yiBUmh7cPCSXE9Af
-$(OUT)/treasuryDAO_storage.tz : token_address = tz1QozfhaUW4wLnohDo6yiBUmh7cPCSXE9Af
+$(OUT)/treasuryDAO_storage.tz : governance_token_address = KT1RdwP8XJPjFyGoUsXFQnQo1yNm6gUqVdp5
+$(OUT)/treasuryDAO_storage.tz : governance_token_id = 0n
 $(OUT)/treasuryDAO_storage.tz : frozen_scale_value = 0n
 $(OUT)/treasuryDAO_storage.tz : frozen_extra_value = 0n
 $(OUT)/treasuryDAO_storage.tz : max_proposal_size = 0n
@@ -106,10 +167,43 @@ $(OUT)/treasuryDAO_storage.tz : min_xtz_amount = 0mutez
 $(OUT)/treasuryDAO_storage.tz : max_xtz_amount = 100mutez
 $(OUT)/treasuryDAO_storage.tz : now_val = Tezos.now
 $(OUT)/treasuryDAO_storage.tz : metadata_map = (Big_map.empty : metadata_map)
+$(OUT)/treasuryDAO_storage.tz : fixed_proposal_fee_in_token = 0n
+$(OUT)/treasuryDAO_storage.tz : ledger = ([] : ledger_list)
+$(OUT)/treasuryDAO_storage.tz : quorum_threshold = {numerator = 1n; denominator = 10n}
+$(OUT)/treasuryDAO_storage.tz : voting_period = 11n
 $(OUT)/treasuryDAO_storage.tz: src/**
 	# ============== Compiling TreasuryDAO storage ============== #
 	mkdir -p $(OUT)
-	$(BUILD_STORAGE) --output-file $(OUT)/treasuryDAO_storage.tz src/treasuryDAO.mligo base_DAO_contract 'default_treasury_DAO_full_storage(("$(admin_address)": address), ("$(token_address)": address), (${frozen_scale_value}, $(frozen_extra_value), $(max_proposal_size), $(slash_scale_value), $(slash_division_value), $(min_xtz_amount), $(max_xtz_amount)), $(now_val), $(metadata_map))'
+	$(BUILD_STORAGE) --output-file $(OUT)/treasuryDAO_storage.tz \
+       src/treasuryDAO.mligo base_DAO_contract "default_treasury_DAO_full_storage( \
+        { base_data = \
+          { storage_data = \
+            { admin = (\"$(admin_address)\" : address) \
+            ; governance_token = \
+              { address = (\"$(governance_token_address)\" : address) \
+              ; token_id =  $(governance_token_id) \
+              } \
+            ; now_val = $(now_val) \
+            ; metadata_map = $(call escape_double_quote,$(metadata_map)) \
+            ; ledger_lst = $(call escape_double_quote,$(ledger)) \
+            ; quorum_threshold = $(quorum_threshold) \
+            ; voting_period = $(voting_period) \
+            } \
+          ; config_data = \
+            { max_quorum = {numerator = 99n; denominator = 100n} \
+            ; min_quorum = {numerator = 1n; denominator = 100n} \
+            ; max_period = 2592000n \
+            ; min_period = 1n} \
+            } \
+          ; frozen_scale_value = $(frozen_scale_value) \
+          ; frozen_extra_value = $(frozen_extra_value) \
+          ; max_proposal_size = $(max_proposal_size) \
+          ; slash_scale_value = $(slash_scale_value) \
+          ; slash_division_value = $(slash_division_value) \
+          ; min_xtz_amount = $(min_xtz_amount) \
+          ; max_xtz_amount = $(max_xtz_amount) \
+          })"
+
 	# ============== Compilation successful ============== #
 	# See "$(OUT)/treasuryDAO_storage.tz" for compilation result #
 	#
@@ -138,16 +232,16 @@ originate-steps: $(OUT)/baseDAO.tz
 
 test: all
 	$(MAKE) -C lorentz test PACKAGE=baseDAO-ligo-meta \
-    BASEDAO_LIGO_PATH=../$(OUT)/baseDAO.tz \
-    REGISTRY_STORAGE_PATH=../$(OUT)/registryDAO_storage.tz \
-    TREASURY_STORAGE_PATH=../$(OUT)/treasuryDAO_storage.tz
+	BASEDAO_LIGO_PATH=../$(OUT)/baseDAO.tz \
+	REGISTRY_STORAGE_PATH=../$(OUT)/registryDAO_storage.tz \
+	TREASURY_STORAGE_PATH=../$(OUT)/treasuryDAO_storage.tz
 
 typescript: all
 	$(MAKE) -C lorentz build PACKAGE=baseDAO-ligo-meta \
 		STACK_DEV_OPTIONS="--fast --ghc-options -Wwarn" \
-    BASEDAO_LIGO_PATH=../$(OUT)/baseDAO.tz \
-    REGISTRY_STORAGE_PATH=../$(OUT)/registryDAO_storage.tz \
-    TREASURY_STORAGE_PATH=../$(OUT)/treasuryDAO_storage.tz
+	BASEDAO_LIGO_PATH=../$(OUT)/baseDAO.tz \
+	REGISTRY_STORAGE_PATH=../$(OUT)/registryDAO_storage.tz \
+	TREASURY_STORAGE_PATH=../$(OUT)/treasuryDAO_storage.tz
 	rm -rf $(TS_OUT)/baseDAO/src/generated/*
 	stack exec -- baseDAO-ligo-meta generate-typescript --target=$(TS_OUT)/baseDAO/src/generated/
 

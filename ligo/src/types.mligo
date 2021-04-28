@@ -105,7 +105,7 @@ type voter =
   }
 
 type proposal_key = bytes
-type proposal_metadata = (string, bytes) map
+type proposal_metadata = bytes
 type proposal =
   { upvotes : nat
   ; downvotes : nat
@@ -140,7 +140,7 @@ type permit =
   }
 
 type metadata_map = (string, bytes) big_map
-type contract_extra = (string, bytes) map
+type contract_extra = (string, bytes) big_map
 
 // Some information to track changes made to the voting period so that we can
 // calculate the current voting period even after many changes to the period length
@@ -153,10 +153,15 @@ type last_period_change =
 
 // -- Storage -- //
 
+type governance_token =
+  { address : address
+  ; token_id : token_id
+  }
+
 type storage =
   { ledger : ledger
   ; operators : operators
-  ; token_address : address
+  ; governance_token : governance_token
   ; admin : address
   ; pending_owner : address
   ; metadata : metadata_map
@@ -169,7 +174,6 @@ type storage =
   ; total_supply : total_supply
   ; freeze_history : freeze_history
   ; fixed_proposal_fee_in_token : nat
-  ; unfrozen_token_id : token_id
   ; frozen_token_id : token_id
   ; last_period_change : last_period_change
   }
@@ -268,9 +272,7 @@ type allow_xtz_params =
 type parameter =
   (allow_xtz_params, "", forbid_xtz_params, "") michelson_or
 
-
-
-type custom_entrypoints = (string, bytes) map
+type custom_entrypoints = (string, bytes) big_map
 
 type decision_lambda_input =
   { proposal : proposal
@@ -278,6 +280,32 @@ type decision_lambda_input =
   }
 
 // -- Config -- //
+
+type initial_ledger_val = address * token_id * nat
+
+type ledger_list = (ledger_key * ledger_value) list
+
+type initial_config_data =
+  { max_quorum : quorum_threshold
+  ; min_quorum : quorum_threshold
+  ; max_period : voting_period
+  ; min_period : voting_period
+  }
+
+type initial_storage_data =
+  { admin : address
+  ; governance_token : governance_token
+  ; now_val : timestamp
+  ; metadata_map : metadata_map
+  ; ledger_lst : ledger_list
+  ; quorum_threshold : quorum_threshold
+  ; voting_period : nat
+  }
+
+type initial_data =
+  { storage_data : initial_storage_data
+  ; config_data : initial_config_data
+  }
 
 type config =
   { proposal_check : propose_params * contract_extra -> bool
@@ -288,8 +316,8 @@ type config =
   ; max_votes : nat
   ; max_quorum_threshold : quorum_threshold
   ; min_quorum_threshold : quorum_threshold
-  ; max_voting_period : nat
-  ; min_voting_period : nat
+  ; max_voting_period : voting_period
+  ; min_voting_period : voting_period
 
   ; custom_entrypoints : custom_entrypoints
   }
@@ -303,9 +331,5 @@ type return = operation list * storage
 type return_with_full_storage = operation list * full_storage
 
 let nil_op = ([] : operation list)
-
-let unfrozen_token_id: nat = 0n
-
-let frozen_token_id: nat = 1n
 
 #endif  // TYPES_H included

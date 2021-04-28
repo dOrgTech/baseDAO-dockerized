@@ -5,7 +5,6 @@
 -- | Types mirrored from LIGO implementation.
 module Ligo.BaseDAO.Types
   ( frozenTokenId
-  , unfrozenTokenId
   , baseDaoAnnOptions
 
     -- * Operators
@@ -23,6 +22,7 @@ module Ligo.BaseDAO.Types
     -- * Proposals
   , ProposalKey
   , ProposeParams(..)
+  , GovernanceToken(..)
 
     -- * Voting
   , QuorumThreshold (..)
@@ -61,6 +61,7 @@ module Ligo.BaseDAO.Types
   , mkConfig
   , defaultConfig
   , mkFullStorage
+  , setExtra
 
   , sOperatorsLens
   ) where
@@ -71,10 +72,9 @@ import Control.Lens (makeLensesFor)
 import qualified Data.Map as M
 
 import Lorentz hiding (now)
+import Lorentz.Annotation ()
 import qualified Lorentz.Contracts.Spec.FA2Interface as FA2
 import qualified Lorentz.Contracts.Spec.TZIP16Interface as TZIP16
-import Lorentz.Annotation ()
-import Michelson.Runtime.GState (genesisAddress)
 import Michelson.Typed.Annotation
 import Michelson.Typed.T (T(TUnit))
 import Michelson.Untyped.Annotation
@@ -101,10 +101,7 @@ instance HasAnnotation FA2.Parameter
 ------------------------------------------------------------------------
 
 frozenTokenId :: FA2.TokenId
-frozenTokenId = FA2.TokenId 1
-
-unfrozenTokenId :: FA2.TokenId
-unfrozenTokenId = FA2.TokenId 0
+frozenTokenId = FA2.TokenId 0
 
 baseDaoAnnOptions :: AnnOptions
 baseDaoAnnOptions = defaultAnnOptions { fieldAnnModifier = dropPrefixThen toSnake }
@@ -380,7 +377,7 @@ type TransferOwnershipParam = ("newOwner" :! Address)
 -- | Represents a product type with arbitrary fields.
 --
 -- Contains a name to make different such records distinguishable.
-newtype DynamicRec n = DynamicRec { unDynamic :: Map MText ByteString }
+newtype DynamicRec n = DynamicRec { unDynamic :: BigMap MText ByteString }
   deriving stock (Generic, Show, Eq)
   deriving newtype (IsoValue, HasAnnotation, Default, One, Semigroup)
 
@@ -388,8 +385,7 @@ newtype DynamicRec n = DynamicRec { unDynamic :: Map MText ByteString }
 dynRecUnsafe :: DynamicRec n
 dynRecUnsafe = DynamicRec mempty
 
--- TODO consider making these all 'BigMap's instead
-type ProposalMetadata = DynamicRec "pm"
+type ProposalMetadata = ByteString
 type ContractExtra = DynamicRec "ce"
 type CustomEntrypoints = DynamicRec "ep"
 
@@ -465,6 +461,14 @@ data AddressFreezeHistory = AddressFreezeHistory
   , fhStaked :: Natural
   } deriving stock (Eq, Show)
 
+data GovernanceToken = GovernanceToken
+  { gtAddress :: Address
+  , gtTokenId :: FA2.TokenId
+  } deriving stock (Eq, Show)
+
+customGeneric "GovernanceToken" ligoLayout
+deriving anyclass instance IsoValue GovernanceToken
+
 data Storage = Storage
   { sAdmin :: Address
   , sExtra :: ContractExtra
@@ -477,15 +481,17 @@ data Storage = Storage
   , sProposals :: BigMap ProposalKey Proposal
   , sProposalKeyListSortByDate :: Set (Timestamp, ProposalKey)
   , sQuorumThreshold :: QuorumThreshold
-  , sTokenAddress :: Address
+  , sGovernanceToken :: GovernanceToken
   , sVotingPeriod :: VotingPeriod
   , sTotalSupply :: TotalSupply
-  , sUnfrozenTokenId :: FA2.TokenId
   , sFreezeHistory :: BigMap Address AddressFreezeHistory
   , sLastPeriodChange :: LastPeriodChange
   , sFixedProposalFeeInToken :: Natural
   }
   deriving stock (Show)
+
+instance HasAnnotation GovernanceToken where
+  annOptions = baseDaoAnnOptions
 
 instance HasAnnotation Proposal where
   annOptions = baseDaoAnnOptions
@@ -515,8 +521,9 @@ mkStorage
   -> "extra" :! ContractExtra
   -> "metadata" :! TZIP16.MetadataMap BigMap
   -> "now" :! Timestamp
+  -> "tokenAddress" :! Address
   -> Storage
-mkStorage admin votingPeriod quorumThreshold extra metadata now =
+mkStorage admin votingPeriod quorumThreshold extra metadata now tokenAddress =
   Storage
     { sAdmin = arg #admin admin
     , sExtra = arg #extra extra
@@ -528,13 +535,15 @@ mkStorage admin votingPeriod quorumThreshold extra metadata now =
     , sProposals = mempty
     , sProposalKeyListSortByDate = mempty
     , sQuorumThreshold = argDef #quorumThreshold quorumThresholdDef quorumThreshold
-    , sTokenAddress = genesisAddress
+    , sGovernanceToken = GovernanceToken
+        { gtAddress = arg #tokenAddress tokenAddress
+        , gtTokenId = FA2.theTokenId
+        }
     , sVotingPeriod = argDef #votingPeriod votingPeriodDef votingPeriod
-    , sTotalSupply = M.fromList [(frozenTokenId, 0), (unfrozenTokenId, 0)]
+    , sTotalSupply = M.fromList [(frozenTokenId, 0)]
     , sFreezeHistory = mempty
     , sLastPeriodChange = LastPeriodChange 0 (arg #now now)
     , sFixedProposalFeeInToken = 0
-    , sUnfrozenTokenId = unfrozenTokenId
     , sFrozenTokenId = frozenTokenId
     }
   where
@@ -580,7 +589,7 @@ mkConfig customEps = Config
       dropN @2; push (0 :: Natural); toNamed #slash_amount
   , cDecisionLambda = do
       drop; nil
-  , cCustomEntrypoints = DynamicRec $ M.fromList customEps
+  , cCustomEntrypoints = DynamicRec $ BigMap $ M.fromList customEps
 
   , cMaxVotingPeriod = 60 * 60 * 24 * 30
   , cMinVotingPeriod = 1
@@ -608,12 +617,20 @@ mkFullStorage
   -> "extra" :! ContractExtra
   -> "metadata" :! TZIP16.MetadataMap BigMap
   -> "now" :! Timestamp
+  -> "tokenAddress" :! Address
   -> "customEps" :? [CustomEntrypoint]
   -> FullStorage
-mkFullStorage admin vp qt extra mdt now cEps = FullStorage
-  { fsStorage = mkStorage admin vp qt extra mdt now
+mkFullStorage admin vp qt extra mdt now tokenAddress cEps = FullStorage
+  { fsStorage = mkStorage admin vp qt extra mdt now tokenAddress
   , fsConfig  = mkConfig (argDef #customEps [] cEps)
   }
+
+setExtra :: forall a. NicePackedValue a => MText -> a -> FullStorage -> FullStorage
+setExtra key v (s@FullStorage {..}) = s { fsStorage = newStorage }
+  where
+    (BigMap oldExtra) = unDynamic $ sExtra fsStorage
+    newExtra = BigMap $ M.insert key (lPackValueRaw v) oldExtra
+    newStorage = fsStorage { sExtra = DynamicRec newExtra }
 
 -- Instances
 ------------------------------------------------
@@ -672,6 +689,13 @@ instance CustomErrorHasDoc "nOT_OWNER" where
   customErrDocMdCause =
     "The sender of transaction is not owner"
 
+type instance ErrorArg "oPERATION_PROHIBITED" = NoErrorArg
+
+instance CustomErrorHasDoc "oPERATION_PROHIBITED" where
+  customErrClass = ErrClassActionException
+  customErrDocMdCause =
+    "The sender tries to update an operator of frozen tokens"
+
 type instance ErrorArg "fROZEN_TOKEN_NOT_TRANSFERABLE" = NoErrorArg
 
 instance CustomErrorHasDoc "fROZEN_TOKEN_NOT_TRANSFERABLE" where
@@ -720,18 +744,6 @@ type instance ErrorArg "fAIL_PROPOSAL_CHECK" = NoErrorArg
 instance CustomErrorHasDoc "fAIL_PROPOSAL_CHECK" where
   customErrClass = ErrClassActionException
   customErrDocMdCause = "Trying to propose a proposal that does not pass `proposalCheck`"
-
-type instance ErrorArg "pROPOSAL_INSUFFICIENT_BALANCE" = NoErrorArg
-
-instance CustomErrorHasDoc "pROPOSAL_INSUFFICIENT_BALANCE" where
-  customErrClass = ErrClassActionException
-  customErrDocMdCause = "Trying to propose a proposal without having enough unfrozen token"
-
-type instance ErrorArg "vOTING_INSUFFICIENT_BALANCE" = NoErrorArg
-
-instance CustomErrorHasDoc "vOTING_INSUFFICIENT_BALANCE" where
-  customErrClass = ErrClassActionException
-  customErrDocMdCause = "Trying to vote on a proposal without having enough unfrozen token"
 
 type instance ErrorArg "pROPOSAL_NOT_EXIST" = NoErrorArg
 
