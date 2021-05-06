@@ -26,13 +26,11 @@ module Ligo.BaseDAO.Types
 
     -- * Voting
   , QuorumThreshold (..)
-  , VotingPeriod
+  , VotingPeriod (..)
   , VoteParam (..)
   , Voter (..)
 
     -- * Non FA2
-  , BurnParam (..)
-  , MintParam (..)
   , TransferContractTokensParam (..)
 
     -- * Permissions
@@ -53,7 +51,6 @@ module Ligo.BaseDAO.Types
   , Config (..)
   , FullStorage (..)
   , AddressFreezeHistory (..)
-  , LastPeriodChange (..)
   , DynamicRec (..)
   , dynRecUnsafe
   , mkStorage
@@ -66,7 +63,7 @@ module Ligo.BaseDAO.Types
   , sOperatorsLens
   ) where
 
-import Universum (One(..), maybe, (*))
+import Universum (Num, One(..), maybe, (*))
 
 import Control.Lens (makeLensesFor)
 import qualified Data.Map as M
@@ -110,7 +107,7 @@ baseDaoAnnOptions = defaultAnnOptions { fieldAnnModifier = dropPrefixThen toSnak
 -- Operators
 ------------------------------------------------------------------------
 
-type Operator = ("owner" :! Address, "operator" :! Address)
+type Operator = ("owner" :! Address, "operator" :! Address, "token_id" :! FA2.TokenId)
 
 type Operators = BigMap Operator ()
 
@@ -176,7 +173,13 @@ instance HasAnnotation QuorumThreshold where
   annOptions = baseDaoAnnOptions
 
 -- | Voting period in seconds
-type VotingPeriod = Natural
+newtype VotingPeriod = VotingPeriod Natural
+  deriving stock (Generic, Show)
+  deriving newtype Num
+  deriving anyclass IsoValue
+
+instance HasAnnotation VotingPeriod where
+  annOptions = baseDaoAnnOptions
 
 -- | Represents whether a voter has voted against (False) or for (True) a given proposal.
 type VoteType = Bool
@@ -215,34 +218,6 @@ instance HasAnnotation VoteParam where
 ------------------------------------------------------------------------
 -- Non FA2
 ------------------------------------------------------------------------
-
-data BurnParam = BurnParam
-  { bFrom_   :: Address
-  , bTokenId :: FA2.TokenId
-  , bAmount  :: Natural
-  }
-  deriving stock (Generic, Show)
-  deriving anyclass IsoValue
-
-instance TypeHasDoc BurnParam where
-  typeDocMdDescription = "Describes whose account, which token id and in what amount to burn"
-
-instance HasAnnotation BurnParam where
-  annOptions = baseDaoAnnOptions
-
-data MintParam = MintParam
-  { mTo_     :: Address
-  , mTokenId :: FA2.TokenId
-  , mAmount  :: Natural
-  }
-  deriving stock (Generic, Show)
-  deriving anyclass IsoValue
-
-instance TypeHasDoc MintParam where
-  typeDocMdDescription = "Describes whose account, which token id and in what amount to mint"
-
-instance HasAnnotation MintParam where
-  annOptions = baseDaoAnnOptions
 
 data TransferContractTokensParam = TransferContractTokensParam
   { tcContractAddress :: Address
@@ -422,17 +397,13 @@ type UnfreezeParam = ("amount" :! Natural)
 -- https://gitlab.com/morley-framework/morley/-/issues/527
 data ForbidXTZParam
   = Accept_ownership ()
-  | Burn BurnParam
   | Call_FA2 FA2.Parameter
   | Drop_proposal ProposalKey
   | Flush Natural
   | Freeze FreezeParam
   | Get_vote_permit_counter (Void_ () Nonce)
   | Get_total_supply (Void_ FA2.TokenId Natural)
-  | Mint MintParam
   | Set_fixed_fee_in_token Natural
-  | Set_quorum_threshold QuorumThreshold
-  | Set_voting_period VotingPeriod
   | Transfer_ownership TransferOwnershipParam
   | Unfreeze UnfreezeParam
   | Vote [PermitProtected VoteParam]
@@ -448,11 +419,6 @@ data Parameter
   = XtzAllowed AllowXTZParam
   | XtzForbidden ForbidXTZParam
   deriving stock (Show)
-
-data LastPeriodChange = LastPeriodChange
-  { vhPeriodNum :: Natural
-  , vhChangedOn :: Timestamp
-  } deriving stock (Eq, Show)
 
 data AddressFreezeHistory = AddressFreezeHistory
   { fhCurrentUnstaked :: Natural
@@ -480,12 +446,10 @@ data Storage = Storage
   , sPermitsCounter :: Nonce
   , sProposals :: BigMap ProposalKey Proposal
   , sProposalKeyListSortByDate :: Set (Timestamp, ProposalKey)
-  , sQuorumThreshold :: QuorumThreshold
   , sGovernanceToken :: GovernanceToken
-  , sVotingPeriod :: VotingPeriod
   , sTotalSupply :: TotalSupply
   , sFreezeHistory :: BigMap Address AddressFreezeHistory
-  , sLastPeriodChange :: LastPeriodChange
+  , sStartTime :: Timestamp
   , sFixedProposalFeeInToken :: Natural
   }
   deriving stock (Show)
@@ -508,22 +472,17 @@ instance HasAnnotation FullStorage where
 instance HasAnnotation Config where
   annOptions = baseDaoAnnOptions
 
-instance HasAnnotation LastPeriodChange where
-  annOptions = baseDaoAnnOptions
-
 instance HasFieldOfType Storage name field => StoreHasField Storage name field where
   storeFieldOps = storeFieldOpsADT
 
 mkStorage
   :: "admin" :! Address
-  -> "votingPeriod" :? Natural
-  -> "quorumThreshold" :? QuorumThreshold
   -> "extra" :! ContractExtra
   -> "metadata" :! TZIP16.MetadataMap BigMap
   -> "now" :! Timestamp
   -> "tokenAddress" :! Address
   -> Storage
-mkStorage admin votingPeriod quorumThreshold extra metadata now tokenAddress =
+mkStorage admin extra metadata now tokenAddress =
   Storage
     { sAdmin = arg #admin admin
     , sExtra = arg #extra extra
@@ -534,21 +493,16 @@ mkStorage admin votingPeriod quorumThreshold extra metadata now tokenAddress =
     , sPermitsCounter = Nonce 0
     , sProposals = mempty
     , sProposalKeyListSortByDate = mempty
-    , sQuorumThreshold = argDef #quorumThreshold quorumThresholdDef quorumThreshold
     , sGovernanceToken = GovernanceToken
         { gtAddress = arg #tokenAddress tokenAddress
         , gtTokenId = FA2.theTokenId
         }
-    , sVotingPeriod = argDef #votingPeriod votingPeriodDef votingPeriod
     , sTotalSupply = M.fromList [(frozenTokenId, 0)]
     , sFreezeHistory = mempty
-    , sLastPeriodChange = LastPeriodChange 0 (arg #now now)
+    , sStartTime = arg #now now
     , sFixedProposalFeeInToken = 0
     , sFrozenTokenId = frozenTokenId
     }
-  where
-    votingPeriodDef = 60 * 60 * 24 * 7  -- 7 days
-    quorumThresholdDef = QuorumThreshold 1 10 -- 10% of frozen total supply
 
 mkMetadataMap
   :: "metadataHostAddress" :! Address
@@ -571,18 +525,16 @@ data Config = Config
 
   , cMaxProposals :: Natural
   , cMaxVotes :: Natural
-  , cMaxQuorumThreshold :: QuorumThreshold
-  , cMinQuorumThreshold :: QuorumThreshold
 
-  , cMaxVotingPeriod :: Natural
-  , cMinVotingPeriod :: Natural
+  , cQuorumThreshold :: QuorumThreshold
+  , cVotingPeriod :: VotingPeriod
 
   , cCustomEntrypoints :: CustomEntrypoints
   }
   deriving stock (Show)
 
-mkConfig :: [CustomEntrypoint] -> Config
-mkConfig customEps = Config
+mkConfig :: [CustomEntrypoint] -> QuorumThreshold -> VotingPeriod -> Config
+mkConfig customEps quorumThreshold votingPeriod  = Config
   { cProposalCheck = do
       dropN @2; push True
   , cRejectedProposalReturnValue = do
@@ -590,19 +542,15 @@ mkConfig customEps = Config
   , cDecisionLambda = do
       drop; nil
   , cCustomEntrypoints = DynamicRec $ BigMap $ M.fromList customEps
-
-  , cMaxVotingPeriod = 60 * 60 * 24 * 30
-  , cMinVotingPeriod = 1
-
-  , cMaxQuorumThreshold = QuorumThreshold 99 100 -- 99%
-  , cMinQuorumThreshold = QuorumThreshold 1 100 -- 1%
+  , cQuorumThreshold = quorumThreshold
+  , cVotingPeriod = votingPeriod
 
   , cMaxVotes = 1000
   , cMaxProposals = 500
   }
 
 defaultConfig :: Config
-defaultConfig = mkConfig []
+defaultConfig = mkConfig [] (QuorumThreshold 1 100) 10
 
 data FullStorage = FullStorage
   { fsStorage :: Storage
@@ -612,7 +560,7 @@ data FullStorage = FullStorage
 
 mkFullStorage
   :: "admin" :! Address
-  -> "votingPeriod" :? Natural
+  -> "votingPeriod" :? VotingPeriod
   -> "quorumThreshold" :? QuorumThreshold
   -> "extra" :! ContractExtra
   -> "metadata" :! TZIP16.MetadataMap BigMap
@@ -621,9 +569,13 @@ mkFullStorage
   -> "customEps" :? [CustomEntrypoint]
   -> FullStorage
 mkFullStorage admin vp qt extra mdt now tokenAddress cEps = FullStorage
-  { fsStorage = mkStorage admin vp qt extra mdt now tokenAddress
+  { fsStorage = mkStorage admin extra mdt now tokenAddress
   , fsConfig  = mkConfig (argDef #customEps [] cEps)
+      (argDef #quorumThreshold quorumThresholdDef qt) (argDef #votingPeriod votingPeriodDef vp)
   }
+  where
+    quorumThresholdDef = QuorumThreshold 1 10 -- 10% of frozen total supply
+    votingPeriodDef = 60 * 60 * 24 * 7  -- 7 days
 
 setExtra :: forall a. NicePackedValue a => MText -> a -> FullStorage -> FullStorage
 setExtra key v (s@FullStorage {..}) = s { fsStorage = newStorage }
@@ -658,9 +610,6 @@ instance ParameterHasEntrypoints Parameter where
 
 customGeneric "AddressFreezeHistory" ligoLayout
 deriving anyclass instance IsoValue AddressFreezeHistory
-
-customGeneric "LastPeriodChange" ligoLayout
-deriving anyclass instance IsoValue LastPeriodChange
 
 customGeneric "Storage" ligoLayout
 deriving anyclass instance IsoValue Storage
@@ -760,18 +709,6 @@ instance CustomErrorHasDoc "vOTING_PERIOD_OVER" where
 ------------------------------------------------
 -- Error causes by bounded value
 ------------------------------------------------
-
-type instance ErrorArg "oUT_OF_BOUND_VOTING_PERIOD" = NoErrorArg
-
-instance CustomErrorHasDoc "oUT_OF_BOUND_VOTING_PERIOD" where
-  customErrClass = ErrClassActionException
-  customErrDocMdCause = "Trying to set voting period that is out of bound."
-
-type instance ErrorArg "oUT_OF_BOUND_QUORUM_THRESHOLD" = NoErrorArg
-
-instance CustomErrorHasDoc "oUT_OF_BOUND_QUORUM_THRESHOLD" where
-  customErrClass = ErrClassActionException
-  customErrDocMdCause = "Trying to set quorum threshold that is out of bound"
 
 type instance ErrorArg "mAX_PROPOSALS_REACHED" = NoErrorArg
 

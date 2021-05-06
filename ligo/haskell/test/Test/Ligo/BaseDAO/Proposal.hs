@@ -19,7 +19,6 @@ import Util.Named
 import Ligo.BaseDAO.Types
 import qualified Lorentz.Contracts.Spec.FA2Interface as FA2
 import Test.Ligo.BaseDAO.Common
-import Test.Ligo.BaseDAO.Proposal.Bounds
 import Test.Ligo.BaseDAO.Proposal.Config
 import Test.Ligo.BaseDAO.Proposal.Proposal
 import Test.Ligo.BaseDAO.Proposal.Vote
@@ -86,13 +85,7 @@ test_BaseDAO_Proposal =
             uncapsNettest $ voteWithPermitNonce (originateLigoDaoWithConfigDesc dynRecUnsafe)
       ]
   , testGroup "Admin:"
-      [ nettestScenario "can set voting period"  $
-          uncapsNettest $ setVotingPeriod (originateLigoDaoWithConfigDesc dynRecUnsafe)
-
-      , nettestScenario "can set quorum threshold" $
-          uncapsNettest $ setQuorumThreshold (originateLigoDaoWithConfigDesc dynRecUnsafe)
-
-      , nettestScenarioOnEmulator "can flush proposals that got accepted" $
+      [ nettestScenarioOnEmulator "can flush proposals that got accepted" $
           \_emulated ->
             uncapsNettest $ flushAcceptedProposals (originateLigoDaoWithConfigDesc dynRecUnsafe)
       , nettestScenarioOnEmulator "can flush 2 proposals that got accepted" $
@@ -129,11 +122,6 @@ test_BaseDAO_Proposal =
       , nettestScenarioOnEmulator "bounded value on votes" $
           \_emulated ->
             uncapsNettest $ votesBoundedValue (originateLigoDaoWithConfigDesc dynRecUnsafe)
-      , nettestScenario "bounded range on quorum_threshold" $
-          uncapsNettest $ quorumThresholdBound (originateLigoDaoWithConfigDesc dynRecUnsafe)
-      , nettestScenarioOnEmulator "bounded range on voting_period" $
-          \_emulated ->
-            uncapsNettest $ votingPeriodBound (originateLigoDaoWithConfigDesc dynRecUnsafe)
       ]
 
   , testGroup "Freeze-Unfreeze"
@@ -147,14 +135,6 @@ test_BaseDAO_Proposal =
       , nettestScenarioOnEmulator "can unfreeze tokens from the previous period" $
           \_emulated ->
             uncapsNettest $ canUnfreezeFromPreviousPeriod (originateLigoDaoWithConfigDesc dynRecUnsafe)
-
-      , nettestScenarioOnEmulator "handle voting period change" $
-          \_emulated ->
-            uncapsNettest $ canHandleVotingPeriodChange (originateLigoDaoWithConfigDesc dynRecUnsafe)
-
-      , nettestScenarioOnEmulator "handle voting period change" $
-          \_emulated ->
-            uncapsNettest $ votingPeriodChange (originateLigoDaoWithConfigDesc dynRecUnsafe)
       ]
 
  , testGroup "LIGO-specific proposal tests:"
@@ -170,7 +150,7 @@ test_BaseDAO_Proposal =
 
           withSender (AddressResolved proposer) $
             call dao (Call @"Freeze") (#amount .! 52)
-          advanceTime (sec 10)
+          advanceTime (sec 20)
 
           withSender (AddressResolved proposer) $ call dao (Call @"Propose") params
           checkTokenBalance frozenTokenId dao proposer 152
@@ -209,7 +189,7 @@ test_BaseDAO_Proposal =
 
           withSender (AddressResolved proposer) $
             call dao (Call @"Freeze") (#amount .! 52)
-          advanceTime (sec 10)
+          advanceTime (sec 20)
 
           withSender (AddressResolved proposer) $ call dao (Call @"Propose") params
             & expectCustomError_ #nOT_ENOUGH_FROZEN_TOKENS dao
@@ -230,13 +210,9 @@ test_BaseDAO_Proposal =
 
     , nettestScenarioOnEmulator "a proposer is returned a fee after the proposal succeeds" $
         \_emulated -> uncapsNettest $ do
-          ((proposer, _), (voter, _), dao, _, admin) <- originateLigoDao
+          ((proposer, _), (voter, _), dao, _, admin) <- originateLigoDaoWithConfigDesc dynRecUnsafe (ConfigDesc $ VotingPeriod 60)
 
-          -- Use 60s for voting period, since in real network by the time we call
-          -- the vote entrypoint 30s have already passed.
           withSender (AddressResolved admin) $ do
-            call dao (Call @"Set_voting_period") 60
-            call dao (Call @"Set_quorum_threshold") $ QuorumThreshold 1 100
             call dao (Call @"Set_fixed_fee_in_token") 42
 
           withSender (AddressResolved voter) $
@@ -311,13 +287,10 @@ burnsFeeOnFailure
   :: forall caps base m. (MonadNettest caps base m)
   => FailureReason -> m ()
 burnsFeeOnFailure reason = do
-  ((proposer, _), (voter, _), dao, _, admin) <- originateLigoDao
+  ((proposer, _), (voter, _), dao, _, admin) <-
+      originateLigoDaoWithConfigDesc dynRecUnsafe (ConfigDesc $ VotingPeriod 60)
 
-  -- Use 60s for voting period, since in real network by the time we call
-  -- the vote entrypoint 30s have already passed.
   withSender (AddressResolved admin) $ do
-    call dao (Call @"Set_voting_period") 60
-    call dao (Call @"Set_quorum_threshold") $ QuorumThreshold 1 100
     call dao (Call @"Set_fixed_fee_in_token") 42
 
   withSender (AddressResolved proposer) $
@@ -386,32 +359,6 @@ canUnfreezeFromPreviousPeriod originateFn = do
         , tiTxs = [FA2.TransferDestination { tdTo = unTAddress dao, tdTokenId = FA2.theTokenId, tdAmount = 10 }]
       }]])
 
-canHandleVotingPeriodChange
-  :: (MonadNettest caps base m, HasCallStack)
-  => (ConfigDesc Config -> OriginateFn m) -> m ()
-canHandleVotingPeriodChange originateFn = do
-  -- Initial voting period is 10 sec
-  ((owner1, _), _, dao, _, admin) <- originateFn testConfig
-
-  withSender (AddressResolved owner1) $ call dao (Call @"Freeze") (#amount .! 10)
-  checkTokenBalance frozenTokenId dao owner1 110
-
-  advanceTime (sec 5)
-
-  withSender (AddressResolved admin) $
-    call dao (Call @"Set_voting_period") 15
-
-  advanceTime (sec 10)
-  -- Since we count voting period from the last time it was changed, we need
-  -- additional 15 seconds to wait before the next period starts. Here only
-  -- 10 seconds is advanced, so we are in the current period itself.
-
-  withSender (AddressResolved owner1) $ call dao (Call @"Unfreeze") (#amount .! 10)
-    & expectCustomError_ #nOT_ENOUGH_FROZEN_TOKENS dao
-
-  advanceTime (sec 5)
-  withSender (AddressResolved owner1) $ call dao (Call @"Unfreeze") (#amount .! 10)
-
 insufficientTokenProposal
   :: (MonadNettest caps base m, HasCallStack)
   => (ConfigDesc Config -> OriginateFn m) -> m ()
@@ -430,13 +377,13 @@ insufficientTokenVote
   => (ConfigDesc Config -> OriginateFn m) -> m ()
 insufficientTokenVote originateFn = do
   ((owner1, _), (owner2, _), dao, _, _) <- originateFn voteConfig
-  advanceTime (sec 120)
+  advanceTime (sec 10)
 
   withSender (AddressResolved owner2) $
     call dao (Call @"Freeze") (#amount .! 100)
 
   -- Create sample proposal
-  key1 <- createSampleProposal 1 120 owner1 dao
+  key1 <- createSampleProposal 1 10 owner1 dao
   let params = fmap NoPermit
         [ VoteParam
             { vVoteType = True
@@ -449,7 +396,7 @@ insufficientTokenVote originateFn = do
             , vProposalKey = key1
             }
         ]
-  advanceTime (sec 120)
+  advanceTime (sec 10)
 
   withSender (AddressResolved owner2) $ call dao (Call @"Vote") params
     & expectCustomError_ #nOT_ENOUGH_FROZEN_TOKENS dao
@@ -459,13 +406,13 @@ voteWithPermit
   => (ConfigDesc Config -> OriginateFn m) -> m ()
 voteWithPermit originateFn = do
   ((owner1, _), (owner2, _), dao, _, _) <- originateFn voteConfig
-  advanceTime (sec 120)
+  advanceTime (sec 10)
 
   withSender (AddressResolved owner1) $
     call dao (Call @"Freeze") (#amount .! 2)
 
   -- Create sample proposal
-  key1 <- createSampleProposal 1 120 owner1 dao
+  key1 <- createSampleProposal 1 10 owner1 dao
 
   params <- permitProtect (AddressResolved owner1) =<< addDataToSign dao (Nonce 0)
         VoteParam
@@ -474,7 +421,7 @@ voteWithPermit originateFn = do
         , vProposalKey = key1
         }
 
-  advanceTime (sec 120)
+  advanceTime (sec 10)
   withSender (AddressResolved owner2) $ call dao (Call @"Vote") [params]
   checkTokenBalance frozenTokenId dao owner1 112
 
@@ -485,7 +432,7 @@ voteWithPermitNonce originateFn = do
 
   ((owner1, _), (owner2, _), dao, _, _) <- originateFn voteConfig
 
-  advanceTime (sec 120)
+  advanceTime (sec 10)
 
   withSender (AddressResolved owner1) $
     call dao (Call @"Freeze") (#amount .! 50)
@@ -494,7 +441,7 @@ voteWithPermitNonce originateFn = do
     call dao (Call @"Freeze") (#amount .! 50)
 
   -- Create sample proposal
-  key1 <- createSampleProposal 1 125 owner1 dao
+  key1 <- createSampleProposal 1 10 owner1 dao
 
   let voteParam = VoteParam
         { vVoteType = True
@@ -502,7 +449,7 @@ voteWithPermitNonce originateFn = do
         , vProposalKey = key1
         }
 
-  advanceTime (sec 120)
+  advanceTime (sec 10)
   -- Going to try calls with different nonces
   signed1@(_          , _) <- addDataToSign dao (Nonce 0) voteParam
   signed2@(dataToSign2, _) <- addDataToSign dao (Nonce 1) voteParam
@@ -536,13 +483,9 @@ flushNotAffectOngoingProposals
   :: (MonadNettest caps base m, HasCallStack)
   => (ConfigDesc Config -> OriginateFn m) -> m ()
 flushNotAffectOngoingProposals originateFn = do
-  ((owner1, _), _, dao, _, admin) <- originateFn testConfig
+  ((owner1, _), _, dao, _, admin) <-
+    originateFn (testConfig >>- (ConfigDesc $ VotingPeriod (2 *60)))
 
-
-  -- Note: Cannot set to few seconds, since in real network, each
-  -- calls takes some times to run. 20 seconds seem to be the ideal.
-  withSender (AddressResolved admin) $
-    call dao (Call @"Set_voting_period") (2 * 60)
   advanceTime (sec 120)
 
   withSender (AddressResolved owner1) $
@@ -564,13 +507,10 @@ flushAcceptedProposals
   :: (MonadNettest caps base m, HasCallStack)
   => (ConfigDesc Config -> OriginateFn m) -> m ()
 flushAcceptedProposals originateFn = do
-  ((owner1, _), (owner2, _), dao, _, admin) <- originateFn testConfig
-
   -- Use 60s for voting period, since in real network by the time we call
   -- vote entrypoint 30s is already passed.
-  withSender (AddressResolved admin) $ do
-    call dao (Call @"Set_voting_period") 60
-    call dao (Call @"Set_quorum_threshold") $ QuorumThreshold 1 100
+  ((owner1, _), (owner2, _), dao, _, admin) <-
+    originateFn (testConfig >>- (ConfigDesc $ VotingPeriod 60))
 
   advanceTime (sec 60)
   withSender (AddressResolved owner2) $
@@ -669,11 +609,10 @@ flushRejectProposalQuorum
   => (ConfigDesc Config -> OriginateFn m) -> m ()
 flushRejectProposalQuorum originateFn = do
   ((owner1, _), (owner2, _), dao, _, admin)
-    <- originateFn configWithRejectedProposal
+    <- originateFn (configWithRejectedProposal
+        >>- (ConfigDesc (QuorumThreshold 3 5))
+        >>- (ConfigDesc $ VotingPeriod 60))
 
-  withSender (AddressResolved admin) $ do
-    call dao (Call @"Set_voting_period") 60
-    call dao (Call @"Set_quorum_threshold") $ QuorumThreshold 3 5
   advanceTime (sec 60)
 
   withSender (AddressResolved owner2) $
@@ -707,11 +646,7 @@ flushRejectProposalNegativeVotes
   => (ConfigDesc Config -> OriginateFn m) -> m ()
 flushRejectProposalNegativeVotes originateFn = do
   ((owner1, _), (owner2, _), dao, _, admin)
-    <- originateFn configWithRejectedProposal
-
-  withSender (AddressResolved admin) $ do
-    call dao (Call @"Set_voting_period") 60
-    call dao (Call @"Set_quorum_threshold") $ QuorumThreshold 3 100
+    <- originateFn (configWithRejectedProposal >>- (ConfigDesc (QuorumThreshold 3 100)) >>- (ConfigDesc (VotingPeriod 60)))
 
   advanceTime (sec 60)
 
@@ -758,11 +693,8 @@ flushWithBadConfig
   :: (MonadNettest caps base m, HasCallStack)
   => (ConfigDesc Config -> OriginateFn m) -> m ()
 flushWithBadConfig originateFn = do
-  ((owner1, _), (owner2, _), dao, _, admin) <- originateFn badRejectedValueConfig
-
-  withSender (AddressResolved admin) $ do
-    call dao (Call @"Set_voting_period") 60
-    call dao (Call @"Set_quorum_threshold") $ QuorumThreshold 1 2
+  ((owner1, _), (owner2, _), dao, _, admin) <-
+    originateFn (badRejectedValueConfig >>- (ConfigDesc (QuorumThreshold 1 2)) >>- (ConfigDesc (VotingPeriod 60)))
 
   advanceTime (sec 60)
   withSender (AddressResolved owner2) $
@@ -792,11 +724,8 @@ flushDecisionLambda
   => (ConfigDesc Config -> OriginateFn m) -> m ()
 flushDecisionLambda originateFn = do
   consumer <- originateSimple "consumer" [] (contractConsumer)
-  ((owner1, _), (owner2, _), dao, _, admin) <- originateFn (decisionLambdaConfig consumer)
-
-  withSender (AddressResolved admin) $ do
-    call dao (Call @"Set_voting_period") 60
-    call dao (Call @"Set_quorum_threshold") $ QuorumThreshold 1 100
+  ((owner1, _), (owner2, _), dao, _, admin) <-
+    originateFn ((decisionLambdaConfig consumer) >>- (ConfigDesc $ VotingPeriod 60))
 
   withSender (AddressResolved owner2) $
     call dao (Call @"Freeze") (#amount .! 10)
@@ -822,11 +751,9 @@ dropProposal
   :: (MonadNettest caps base m, HasCallStack)
   => (ConfigDesc Config -> OriginateFn m) -> m ()
 dropProposal originateFn = do
-  ((owner1, _), (owner2, _), dao, _, admin) <- originateFn badRejectedValueConfig
+  ((owner1, _), (owner2, _), dao, _, admin) <-
+    originateFn (badRejectedValueConfig >>- (ConfigDesc (QuorumThreshold 1 50)) >>- (ConfigDesc (VotingPeriod 20)))
 
-  withSender (AddressResolved admin) $ do
-    call dao (Call @"Set_voting_period") 20
-    call dao (Call @"Set_quorum_threshold") $ QuorumThreshold 1 50
   advanceTime (sec 25)
 
   withSender (AddressResolved owner1) $
@@ -893,11 +820,11 @@ votesBoundedValue originateFn = do
     ( voteConfig >>-
       ConfigDesc configConsts{ cmMaxVotes = Just 1 }
     )
+  advanceTime (sec 10)
   withSender (AddressResolved owner1) $
     call dao (Call @"Freeze") (#amount .! 2)
 
-  advanceTime (sec 120)
-  key1 <- createSampleProposal 1 120 owner2 dao
+  key1 <- createSampleProposal 1 10 owner2 dao
   let upvote' = NoPermit VoteParam
         { vVoteType = False
         , vVoteAmount = 1
@@ -908,79 +835,8 @@ votesBoundedValue originateFn = do
         , vVoteAmount = 1
         , vProposalKey = key1
         }
-  advanceTime (sec 120)
+  advanceTime (sec 10)
   withSender (AddressResolved owner1) $ do
     call dao (Call @"Vote") [downvote']
     call dao (Call @"Vote") [upvote']
       & expectCustomErrorNoArg #mAX_VOTES_REACHED dao
-
-quorumThresholdBound
-  :: (MonadNettest caps base m, HasCallStack)
-  => (ConfigDesc Config -> OriginateFn m) -> m ()
-quorumThresholdBound originateFn = do
-  (_, _, dao, _, admin) <- originateFn
-    ( testConfig >>-
-      ConfigDesc configConsts
-        { cmMinQuorumThreshold = Just $ QuorumThreshold 1 100
-        , cmMaxQuorumThreshold = Just $ QuorumThreshold 2 100
-        }
-    )
-  withSender (AddressResolved admin) $ do
-    call dao (Call @"Set_quorum_threshold") (QuorumThreshold 1 100)
-    call dao (Call @"Set_quorum_threshold") (QuorumThreshold 2 100)
-    call dao (Call @"Set_quorum_threshold") (QuorumThreshold 0 100)
-      & expectCustomErrorNoArg #oUT_OF_BOUND_QUORUM_THRESHOLD dao
-    call dao (Call @"Set_quorum_threshold") (QuorumThreshold 3 100)
-      & expectCustomErrorNoArg #oUT_OF_BOUND_QUORUM_THRESHOLD dao
-
-votingPeriodBound
-  :: (MonadNettest caps base m, HasCallStack)
-  => (ConfigDesc Config -> OriginateFn m) -> m ()
-votingPeriodBound originateFn = do
-  (_, _, dao, _, admin) <- originateFn
-    ( testConfig >>-
-      ConfigDesc configConsts
-        { cmMinVotingPeriod = Just 1
-        , cmMaxVotingPeriod = Just 2
-        }
-    )
-  withSender (AddressResolved admin) $ do
-    call dao (Call @"Set_voting_period") 1
-    call dao (Call @"Set_voting_period") 2
-    call dao (Call @"Set_voting_period") 0
-      & expectCustomErrorNoArg #oUT_OF_BOUND_VOTING_PERIOD dao
-    call dao (Call @"Set_voting_period") 3
-      & expectCustomErrorNoArg #oUT_OF_BOUND_VOTING_PERIOD dao
-
-votingPeriodChange
-  :: (MonadNettest caps base m, HasCallStack)
-  => (ConfigDesc Config -> OriginateFn m) -> m ()
-votingPeriodChange originateFn = do
-  ((owner1, _), (owner2, _), dao, _, admin) <- originateFn testConfig
-  advanceTime (sec 11)
-
-  withSender (AddressResolved owner2) $
-    call dao (Call @"Freeze") (#amount .! 10)
-
-  withSender (AddressResolved owner1) $
-    call dao (Call @"Freeze") (#amount .! 10)
-
-  advanceTime (sec 10)
-
-  -- Create sample proposal
-  key1 <- createSampleProposal 1 0 owner1 dao
-
-  advanceTime (sec 10)
-  withSender (AddressResolved admin) $ call dao (Call @"Set_voting_period") 20
-
-  let params = NoPermit VoteParam
-        { vVoteType = True
-        , vVoteAmount = 2
-        , vProposalKey = key1
-        }
-
-  withSender (AddressResolved owner2) $ do
-    call dao (Call @"Vote") [params]
-    advanceTime (sec 25)
-    call dao (Call @"Vote") [params]
-      & expectCustomErrorNoArg #vOTING_PERIOD_OVER dao

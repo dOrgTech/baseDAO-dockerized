@@ -74,7 +74,7 @@ $(OUT)/trivialDAO_storage.tz : metadata_map = (Big_map.empty : metadata_map)
 $(OUT)/trivialDAO_storage.tz : fixed_proposal_fee_in_token = 0n
 $(OUT)/trivialDAO_storage.tz : ledger = ([] : ledger_list)
 $(OUT)/trivialDAO_storage.tz : quorum_threshold = {numerator = 1n; denominator = 10n}
-$(OUT)/trivialDAO_storage.tz : voting_period = 11n
+$(OUT)/trivialDAO_storage.tz : voting_period = 950400n # 11 days
 $(OUT)/trivialDAO_storage.tz: src/**
 	# ============== Compiling TrivialDAO storage ============== #
 	mkdir -p $(OUT)
@@ -89,14 +89,10 @@ $(OUT)/trivialDAO_storage.tz: src/**
           ; now_val = $(now_val) \
           ; metadata_map = $(call escape_double_quote,$(metadata_map)) \
           ; ledger_lst = $(call escape_double_quote,$(ledger)) \
-          ; quorum_threshold = $(quorum_threshold) \
-          ; voting_period = $(voting_period) \
           } \
         ; config_data = \
-          { max_quorum = {numerator = 99n; denominator = 100n} \
-          ; min_quorum = {numerator = 1n; denominator = 100n} \
-          ; max_period = 2592000n \
-          ; min_period = 1n \
+          { voting_period = { length = $(voting_period) } \
+          ; quorum_threshold = $(quorum_threshold) \
           } \
         })"
 	# ================= Compilation successful ================= #
@@ -118,7 +114,7 @@ $(OUT)/registryDAO_storage.tz : metadata_map = (Big_map.empty : metadata_map)
 $(OUT)/registryDAO_storage.tz : fixed_proposal_fee_in_token = 0n
 $(OUT)/registryDAO_storage.tz : ledger = ([] : ledger_list)
 $(OUT)/registryDAO_storage.tz : quorum_threshold = {numerator = 1n; denominator = 10n}
-$(OUT)/registryDAO_storage.tz : voting_period = 11n
+$(OUT)/registryDAO_storage.tz : voting_period = 950400n # 11 days
 $(OUT)/registryDAO_storage.tz: src/**
 	# ============== Compiling RegistryDAO storage ============== #
 	mkdir -p $(OUT)
@@ -134,15 +130,12 @@ $(OUT)/registryDAO_storage.tz: src/**
             ; now_val = $(now_val) \
             ; metadata_map = $(call escape_double_quote,$(metadata_map)) \
             ; ledger_lst = $(call escape_double_quote,$(ledger)) \
-            ; quorum_threshold = $(quorum_threshold) \
-            ; voting_period = $(voting_period) \
             } \
           ; config_data = \
-            { max_quorum = {numerator = 99n; denominator = 100n} \
-            ; min_quorum = {numerator = 1n; denominator = 100n} \
-            ; max_period = 2592000n \
-            ; min_period = 1n} \
+            { quorum_threshold = $(quorum_threshold) \
+            ; voting_period = { length = $(voting_period) } \
             } \
+          } \
           ; frozen_scale_value = $(frozen_scale_value) \
           ; frozen_extra_value = $(frozen_extra_value) \
           ; max_proposal_size = $(max_proposal_size) \
@@ -170,7 +163,7 @@ $(OUT)/treasuryDAO_storage.tz : metadata_map = (Big_map.empty : metadata_map)
 $(OUT)/treasuryDAO_storage.tz : fixed_proposal_fee_in_token = 0n
 $(OUT)/treasuryDAO_storage.tz : ledger = ([] : ledger_list)
 $(OUT)/treasuryDAO_storage.tz : quorum_threshold = {numerator = 1n; denominator = 10n}
-$(OUT)/treasuryDAO_storage.tz : voting_period = 11n
+$(OUT)/treasuryDAO_storage.tz : voting_period = 950400n # 11 days
 $(OUT)/treasuryDAO_storage.tz: src/**
 	# ============== Compiling TreasuryDAO storage ============== #
 	mkdir -p $(OUT)
@@ -186,15 +179,12 @@ $(OUT)/treasuryDAO_storage.tz: src/**
             ; now_val = $(now_val) \
             ; metadata_map = $(call escape_double_quote,$(metadata_map)) \
             ; ledger_lst = $(call escape_double_quote,$(ledger)) \
-            ; quorum_threshold = $(quorum_threshold) \
-            ; voting_period = $(voting_period) \
             } \
           ; config_data = \
-            { max_quorum = {numerator = 99n; denominator = 100n} \
-            ; min_quorum = {numerator = 1n; denominator = 100n} \
-            ; max_period = 2592000n \
-            ; min_period = 1n} \
+            { quorum_threshold = $(quorum_threshold) \
+            ; voting_period = { length = $(voting_period) } \
             } \
+          } \
           ; frozen_scale_value = $(frozen_scale_value) \
           ; frozen_extra_value = $(frozen_extra_value) \
           ; max_proposal_size = $(max_proposal_size) \
@@ -247,4 +237,3 @@ typescript: all
 
 clean:
 	rm -rf $(OUT)
-	rm -rf $(TS_OUT)/baseDAO/src/generated/*

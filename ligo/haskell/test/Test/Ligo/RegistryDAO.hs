@@ -240,9 +240,6 @@ test_RegistryDAO =
             largeProposalSize = metadataSize largeProposalMeta -- 341
 
             in do
-              withSender (AddressResolved admin) $
-                call baseDao (Call @"Set_quorum_threshold") $ QuorumThreshold 1 100
-
               advanceTime (sec 10) -- voting period is 10 secs
               let requiredFrozen = largeProposalSize * frozen_scale_value + frozen_extra_value
 
@@ -300,9 +297,6 @@ test_RegistryDAO =
                 [ ([mt|key|], Just [mt|testVal|]) ]
 
               proposalSize = metadataSize proposalMeta
-
-            withSender (AddressResolved admin) $
-              call baseDao (Call @"Set_quorum_threshold") $ QuorumThreshold 1 100
 
             withSender (AddressResolved wallet1) $
               call baseDao (Call @"Freeze") (#amount .! proposalSize)
@@ -472,6 +466,7 @@ test_RegistryDAO =
     initialStorage admin wallets = let
       fs = fromVal ($(fetchValue @FullStorage "haskell/test/registryDAO_storage.tz" "REGISTRY_STORAGE_PATH"))
       oldStorage = fsStorage fs
+      oldConfig = fsConfig fs
 
       ledger = BigMap $ Map.fromList [((w, frozenTokenId), defaultTokenBalance) | w <- wallets]
 
@@ -480,7 +475,7 @@ test_RegistryDAO =
         , sLedger = ledger
         , sTotalSupply = totalSupplyFromLedger ledger
         }
-      in fs { fsStorage = newStorage }
+      in fs { fsStorage = newStorage, fsConfig = oldConfig { cVotingPeriod = 11} }
 
     initialStorageWithExplictRegistryDAOConfig :: Address -> [Address] -> FullStorage
     initialStorageWithExplictRegistryDAOConfig admin wallets =

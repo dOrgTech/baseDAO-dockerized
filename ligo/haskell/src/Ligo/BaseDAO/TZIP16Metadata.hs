@@ -16,6 +16,7 @@ module Ligo.BaseDAO.TZIP16Metadata
   , tokenMetadataView
   , getTotalSupplyView
   , permitsCounterView
+  , governanceTokenView
   ) where
 
 import qualified Universum as U
@@ -86,6 +87,7 @@ baseDAOViews = U.sequence
   , isOperatorView
   , tokenMetadataView
   , getTotalSupplyView
+  , governanceTokenView
 
   , permitsCounterView
   ]
@@ -138,7 +140,6 @@ isOperatorView MetadataSettings{} = View
             unsafeCompileViewCode $ WithParam @FA2.OperatorParam $ do
               dip dup
               convertOperatorParam
-              pair
               stMem #sOperators
       ]
   }
@@ -202,6 +203,20 @@ getTotalSupplyView MetadataSettings{ msConfig = MetadataConfig{} } = View
       ]
   }
 
+governanceTokenView :: DaoView
+governanceTokenView MetadataSettings{} = View
+  { vName = "governance_token"
+  , vDescription = Just
+      "Return the address and token_id of the associated FA2 contract."
+  , vPure = Just True
+  , vImplementations =
+      [ VIMichelsonStorageView $
+          mkMichelsonStorageView @Storage Nothing [] $
+            unsafeCompileViewCode $ WithoutParam $ do
+              stToField #sGovernanceToken
+      ]
+  }
+
 -- BaseDAO-specific
 ------------------------------------------------------------------------
 
@@ -222,28 +237,36 @@ permitsCounterView MetadataSettings{} = View
 -- TODO reconsider this
 convertOperatorParam
   :: forall store s.
-     ( StoreHasField store "sFrozenTokenId" FA2.TokenId
+     ( StoreHasField store "sTotalSupply" TotalSupply
      )
   => FA2.OperatorParam : store : s
-  :-> ("owner" :! Address) : ("operator" :! Address) : s
+  :-> Operator : s
 convertOperatorParam = do
-  stackType @(FA2.OperatorParam ': store ': _)
+  stackType @(FA2.OperatorParam ': store ': s)
   getField #opTokenId
-  stackType @(FA2.TokenId ': FA2.OperatorParam ': store ': _)
+  stackType @(FA2.TokenId ': FA2.OperatorParam ': store ': s)
   dip do
-    stackType @(FA2.OperatorParam ': store ': _)
+    stackType @(FA2.OperatorParam ': store ': s)
     getField #opOperator; toNamed #operator
-    stackType @("operator" :! Address ': FA2.OperatorParam ': store ': _)
+    stackType @("operator" :! Address ': FA2.OperatorParam ': store ': s)
     dip $ do toField #opOwner; toNamed #owner
-    stackType @("operator" :! Address ': "owner" :! Address ': store ': _)
+    stackType @("operator" :! Address ': "owner" :! Address ': store ': s)
     dig @2
-    stackType @(store ': "operator" :! Address ': "owner" :! Address ': _)
+    stackType @(store ': "operator" :! Address ': "owner" :! Address ': s)
   -- validateOperatorToken
-  stackType @(FA2.TokenId ': store ': "operator" :! Address ': "owner" :! Address ': _)
-  dip (stGetField #sFrozenTokenId)
+  stackType @(FA2.TokenId ': store ': "operator" :! Address ': "owner" :! Address ': s)
+  dip (stToField #sTotalSupply)
   dup
-  dip swap
-  if IsEq
-    then dropN @2 @(FA2.TokenId : store : _)
-    else failUsing [mt|OPERATION_PROHIBITED|]
+  dip mem
   swap
+  if Holds
+    then do
+      toNamed #token_id
+      stackType @("token_id" :! FA2.TokenId ': "operator" :! Address ': "owner" :! Address ': s)
+      constructT @Operator
+        ( fieldCtor $ dupN @3
+        , fieldCtor $ dupN @2
+        , fieldCtor $ dup
+        )
+      dip (dropN @3)
+    else failUsing [mt|OPERATION_PROHIBITED|]
