@@ -21,13 +21,13 @@ export const generateSteps = async (template: Template, storage: Storage, origin
   const ligoDirPath = join(process.cwd(), "ligo")
   const storagePathArgument = join("out", `${template}DAO_storage.tz`)
   const storagePath = join(ligoDirPath, storagePathArgument)
-  const stepsPathArgument = join("out", "steps")
-  const stepsPath = join(ligoDirPath, stepsPathArgument)
-  const steps: Record<string, string> = {};
+  // const stepsPathArgument = join("out", "steps")
+  // const stepsPath = join(ligoDirPath, stepsPathArgument)
+  // const steps: Record<string, string> = {};
 
   try {
     rimraf.sync(storagePath)
-    rimraf.sync(stepsPath)
+    // rimraf.sync(stepsPath)
   } catch(e) {
     console.log(e)
   }
@@ -38,17 +38,17 @@ export const generateSteps = async (template: Template, storage: Storage, origin
     ).join(" ")} ${storagePathArgument}`
   );
 
-  await runCommand(
-    `cd ${join(process.cwd(), "ligo")} && make originate-steps storage=${storagePathArgument} \
-    admin_address=${originatorAddress} destination=${stepsPathArgument}`
-  )
+  // await runCommand(
+  //   `cd ${join(process.cwd(), "ligo")} && make originate-steps storage=${storagePathArgument} \
+  //   admin_address=${originatorAddress} destination=${stepsPathArgument}`
+  // )
 
-  const stepsFiles = readdirSync(stepsPath)
-  stepsFiles.forEach(file => {
-    steps[file] = readFileSync(join(stepsPath, file), "utf-8")
-  })
+  // const stepsFiles = readdirSync(stepsPath)
+  // stepsFiles.forEach(file => {
+  //   steps[file] = readFileSync(join(stepsPath, file), "utf-8")
+  // })
 
   const storageOutput = readFileSync(storagePath, "utf-8")
 
-  return { steps, storage: storageOutput }
+  return { storage: storageOutput }
 };
