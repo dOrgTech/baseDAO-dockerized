@@ -26,9 +26,16 @@ module Ligo.BaseDAO.Types
 
     -- * Voting
   , QuorumThreshold (..)
+  , QuorumThresholdAtCycle (..)
   , VotingPeriod (..)
   , VoteParam (..)
   , Voter (..)
+  , MaxChangePercent (..)
+  , ChangePercent (..)
+  , GovernanceTotalSupply (..)
+  , mkQuorumThreshold
+  , fractionDenominator
+  , percentageToFractionNumerator
 
     -- * Non FA2
   , TransferContractTokensParam (..)
@@ -47,11 +54,17 @@ module Ligo.BaseDAO.Types
   , CustomEntrypoints
   , Proposal (..)
   , Parameter
-  , Storage (..)
-  , Config (..)
-  , FullStorage (..)
+  , FixedFee (..)
+  , Storage' (..)
+  , Storage
+  , StorageView
+  , Config' (..)
+  , Config
+  , FullStorage' (..)
+  , FullStorage
+  , FullStorageView
   , AddressFreezeHistory (..)
-  , DynamicRec (..)
+  , DynamicRec
   , dynRecUnsafe
   , mkStorage
   , mkMetadataMap
@@ -63,7 +76,7 @@ module Ligo.BaseDAO.Types
   , sOperatorsLens
   ) where
 
-import Universum (Num, One(..), maybe, (*))
+import Universum (Num, One(..), div, maybe, (*))
 
 import Control.Lens (makeLensesFor)
 import qualified Data.Map as M
@@ -75,6 +88,7 @@ import qualified Lorentz.Contracts.Spec.TZIP16Interface as TZIP16
 import Michelson.Typed.Annotation
 import Michelson.Typed.T (T(TUnit))
 import Michelson.Untyped.Annotation
+import Morley.Client (BigMapId(..))
 import Util.Markdown
 
 ------------------------------------------------------------------------
@@ -109,13 +123,16 @@ baseDaoAnnOptions = defaultAnnOptions { fieldAnnModifier = dropPrefixThen toSnak
 
 type Operator = ("owner" :! Address, "operator" :! Address, "token_id" :! FA2.TokenId)
 
-type Operators = BigMap Operator ()
+type Operators' big_map = big_map Operator ()
+
+type Operators = Operators' BigMap
 
 ------------------------------------------------------------------------
 -- Ledger
 ------------------------------------------------------------------------
 
-type Ledger = BigMap LedgerKey LedgerValue
+type Ledger' big_map = big_map LedgerKey LedgerValue
+type Ledger = Ledger' BigMap
 
 type LedgerKey = (Address, FA2.TokenId)
 
@@ -163,22 +180,56 @@ type ProposalKey = Hash Blake2b $ Packed (ProposeParams, Address)
 -- A proposal will be accepted only if:
 -- (quorum_threshold * total_supply >= upvote + downvote) && (upvote > downvote)
 data QuorumThreshold = QuorumThreshold
-  { qtNumerator   :: Natural
-  , qtDenominator :: Natural
+  { qtNumerator :: Natural
   }
-  deriving stock (Generic, Show)
+  deriving stock (Eq, Generic, Show)
   deriving anyclass IsoValue
+
+fractionDenominator :: Integer
+fractionDenominator = 1000000
+
+percentageToFractionNumerator :: Num p => p -> p
+percentageToFractionNumerator p = p * (fromInteger $ div fractionDenominator 100)
+
+mkQuorumThreshold :: Integer -> Integer -> QuorumThreshold
+mkQuorumThreshold n d = QuorumThreshold $ fromInteger $ div (n * fractionDenominator) d
 
 instance HasAnnotation QuorumThreshold where
   annOptions = baseDaoAnnOptions
 
 -- | Voting period in seconds
-newtype VotingPeriod = VotingPeriod Natural
+newtype VotingPeriod = VotingPeriod { unVotingPeriod :: Natural}
   deriving stock (Generic, Show)
   deriving newtype Num
   deriving anyclass IsoValue
 
 instance HasAnnotation VotingPeriod where
+  annOptions = baseDaoAnnOptions
+
+newtype MaxChangePercent = MaxChangePercent Natural
+  deriving stock (Generic, Show)
+  deriving newtype Num
+  deriving anyclass IsoValue
+
+instance HasAnnotation MaxChangePercent where
+  annOptions = baseDaoAnnOptions
+
+-- | Voting period in seconds
+newtype ChangePercent = ChangePercent Natural
+  deriving stock (Generic, Show)
+  deriving newtype Num
+  deriving anyclass IsoValue
+
+instance HasAnnotation ChangePercent where
+  annOptions = baseDaoAnnOptions
+
+-- | Voting period in seconds
+newtype GovernanceTotalSupply = GovernanceTotalSupply Natural
+  deriving stock (Generic, Show)
+  deriving newtype Num
+  deriving anyclass IsoValue
+
+instance HasAnnotation GovernanceTotalSupply where
   annOptions = baseDaoAnnOptions
 
 -- | Represents whether a voter has voted against (False) or for (True) a given proposal.
@@ -352,17 +403,34 @@ type TransferOwnershipParam = ("newOwner" :! Address)
 -- | Represents a product type with arbitrary fields.
 --
 -- Contains a name to make different such records distinguishable.
-newtype DynamicRec n = DynamicRec { unDynamic :: BigMap MText ByteString }
-  deriving stock (Generic, Show, Eq)
-  deriving newtype (IsoValue, HasAnnotation, Default, One, Semigroup)
+newtype DynamicRec' big_map n = DynamicRec' { unDynamic :: big_map MText ByteString }
+
+type DynamicRec = DynamicRec' BigMap
+deriving stock instance Generic (DynamicRec n)
+deriving stock instance Show (DynamicRec n)
+deriving stock instance Eq (DynamicRec n)
+deriving newtype instance IsoValue (DynamicRec n)
+deriving newtype instance HasAnnotation (DynamicRec n)
+deriving newtype instance Default (DynamicRec n)
+deriving newtype instance One (DynamicRec n)
+deriving newtype instance Semigroup (DynamicRec n)
+
+type DynamicRecView = DynamicRec' BigMapId
+deriving stock instance Generic (DynamicRecView n)
+deriving stock instance Show (DynamicRecView n)
+deriving newtype instance IsoValue (DynamicRecView n)
 
 -- | Construct 'DynamicRec' assuming it contains no mandatory entries.
 dynRecUnsafe :: DynamicRec n
-dynRecUnsafe = DynamicRec mempty
+dynRecUnsafe = DynamicRec' mempty
 
 type ProposalMetadata = ByteString
-type ContractExtra = DynamicRec "ce"
-type CustomEntrypoints = DynamicRec "ep"
+
+type ContractExtra' big_map = DynamicRec' big_map "ce"
+type ContractExtra = ContractExtra' BigMap
+
+type CustomEntrypoints' big_map = DynamicRec' big_map "ep"
+type CustomEntrypoints = CustomEntrypoints' BigMap
 
 
 data Proposal = Proposal
@@ -375,9 +443,9 @@ data Proposal = Proposal
 
   , plProposer                :: Address
   , plProposerFrozenToken     :: Natural
-  , plProposerFixedFeeInToken :: Natural
 
   , plVoters                  :: [Voter]
+  , plQuorumThreshold         :: QuorumThreshold
   }
   deriving stock (Show)
 
@@ -401,9 +469,6 @@ data ForbidXTZParam
   | Drop_proposal ProposalKey
   | Flush Natural
   | Freeze FreezeParam
-  | Get_vote_permit_counter (Void_ () Nonce)
-  | Get_total_supply (Void_ FA2.TokenId Natural)
-  | Set_fixed_fee_in_token Natural
   | Transfer_ownership TransferOwnershipParam
   | Unfreeze UnfreezeParam
   | Vote [PermitProtected VoteParam]
@@ -435,24 +500,49 @@ data GovernanceToken = GovernanceToken
 customGeneric "GovernanceToken" ligoLayout
 deriving anyclass instance IsoValue GovernanceToken
 
-data Storage = Storage
+data QuorumThresholdAtCycle = QuorumThresholdAtCycle
+  { qaLastUpdatedCycle :: Natural
+  , qaQuorumThreshold :: QuorumThreshold
+  , qaStaked :: Natural
+  } deriving stock (Eq, Show)
+
+customGeneric "QuorumThresholdAtCycle" ligoLayout
+deriving anyclass instance IsoValue QuorumThresholdAtCycle
+
+instance HasAnnotation QuorumThresholdAtCycle where
+  annOptions = baseDaoAnnOptions
+
+data Storage' big_map = Storage'
   { sAdmin :: Address
-  , sExtra :: ContractExtra
+  , sGuardian :: Address
+  , sExtra :: ContractExtra' big_map
   , sFrozenTokenId :: FA2.TokenId
-  , sLedger :: Ledger
-  , sMetadata :: TZIP16.MetadataMap BigMap
-  , sOperators :: Operators
+  , sLedger :: Ledger' big_map
+  , sMetadata :: TZIP16.MetadataMap big_map
+  , sOperators :: Operators' big_map
   , sPendingOwner :: Address
   , sPermitsCounter :: Nonce
-  , sProposals :: BigMap ProposalKey Proposal
+  , sProposals :: big_map ProposalKey Proposal
   , sProposalKeyListSortByDate :: Set (Timestamp, ProposalKey)
   , sGovernanceToken :: GovernanceToken
   , sTotalSupply :: TotalSupply
-  , sFreezeHistory :: BigMap Address AddressFreezeHistory
+  , sFreezeHistory :: big_map Address AddressFreezeHistory
   , sStartTime :: Timestamp
-  , sFixedProposalFeeInToken :: Natural
+  , sQuorumThresholdAtCycle :: QuorumThresholdAtCycle
   }
-  deriving stock (Show)
+
+customGeneric "Storage'" ligoLayout
+
+type Storage = Storage' BigMap
+deriving stock instance Show Storage
+deriving anyclass instance IsoValue Storage
+instance HasAnnotation Storage where
+  annOptions = baseDaoAnnOptions
+
+type StorageView = Storage' BigMapId
+deriving stock instance Show StorageView
+deriving anyclass instance IsoValue StorageView
+
 
 instance HasAnnotation GovernanceToken where
   annOptions = baseDaoAnnOptions
@@ -460,16 +550,10 @@ instance HasAnnotation GovernanceToken where
 instance HasAnnotation Proposal where
   annOptions = baseDaoAnnOptions
 
-instance HasAnnotation Storage where
+instance HasAnnotation FixedFee where
   annOptions = baseDaoAnnOptions
 
 instance HasAnnotation AddressFreezeHistory where
-  annOptions = baseDaoAnnOptions
-
-instance HasAnnotation FullStorage where
-  annOptions = baseDaoAnnOptions
-
-instance HasAnnotation Config where
   annOptions = baseDaoAnnOptions
 
 instance HasFieldOfType Storage name field => StoreHasField Storage name field where
@@ -481,10 +565,12 @@ mkStorage
   -> "metadata" :! TZIP16.MetadataMap BigMap
   -> "now" :! Timestamp
   -> "tokenAddress" :! Address
+  -> "quorumThreshold" :! QuorumThreshold
   -> Storage
-mkStorage admin extra metadata now tokenAddress =
-  Storage
+mkStorage admin extra metadata now tokenAddress qt =
+  Storage'
     { sAdmin = arg #admin admin
+    , sGuardian = arg #admin admin
     , sExtra = arg #extra extra
     , sLedger = mempty
     , sMetadata = arg #metadata metadata
@@ -500,8 +586,8 @@ mkStorage admin extra metadata now tokenAddress =
     , sTotalSupply = M.fromList [(frozenTokenId, 0)]
     , sFreezeHistory = mempty
     , sStartTime = arg #now now
-    , sFixedProposalFeeInToken = 0
     , sFrozenTokenId = frozenTokenId
+    , sQuorumThresholdAtCycle = QuorumThresholdAtCycle 1 (arg #quorumThreshold qt) 0
     }
 
 mkMetadataMap
@@ -518,71 +604,132 @@ mkMetadataMap hostAddress hostChain key =
       (argF #metadataHostChain hostChain)
       (arg #metadataHostAddress hostAddress)
 
-data Config = Config
-  { cProposalCheck :: '[ProposeParams, ContractExtra] :-> '[Bool]
-  , cRejectedProposalReturnValue :: '[Proposal, ContractExtra] :-> '["slash_amount" :! Natural]
-  , cDecisionLambda :: '[Proposal, ContractExtra] :-> '[List Operation, ContractExtra]
+newtype FixedFee = FixedFee Natural
+  deriving stock (Show, Generic)
+  deriving newtype Num
+  deriving anyclass IsoValue
+
+data Config' big_map = Config'
+  { cProposalCheck :: '[ProposeParams, ContractExtra' big_map] :-> '[Bool]
+  , cRejectedProposalReturnValue :: '[Proposal, ContractExtra' big_map]
+      :-> '["slash_amount" :! Natural]
+  , cDecisionLambda :: '[Proposal, ContractExtra' big_map]
+      :-> '[List Operation, ContractExtra' big_map]
 
   , cMaxProposals :: Natural
   , cMaxVotes :: Natural
+  , cMaxQuorumThreshold :: QuorumThreshold
+  , cMinQuorumThreshold :: QuorumThreshold
 
-  , cQuorumThreshold :: QuorumThreshold
+  , cFixedProposalFee :: FixedFee
   , cVotingPeriod :: VotingPeriod
+  , cMaxQuorumChange :: MaxChangePercent
+  , cQuorumChange :: ChangePercent
+  , cGovernanceTotalSupply :: GovernanceTotalSupply
+  , cProposalFlushTime :: Natural
+  , cProposalExpiredTime :: Natural
 
-  , cCustomEntrypoints :: CustomEntrypoints
+  , cCustomEntrypoints :: CustomEntrypoints' big_map
   }
-  deriving stock (Show)
 
-mkConfig :: [CustomEntrypoint] -> QuorumThreshold -> VotingPeriod -> Config
-mkConfig customEps quorumThreshold votingPeriod  = Config
+customGeneric "Config'" ligoLayout
+
+type Config = Config' BigMap
+deriving stock instance Show Config
+deriving anyclass instance IsoValue Config
+instance HasAnnotation Config where
+  annOptions = baseDaoAnnOptions
+
+type ConfigView = Config' BigMapId
+deriving stock instance Show ConfigView
+deriving anyclass instance IsoValue ConfigView
+
+mkConfig
+  :: [CustomEntrypoint]
+  -> VotingPeriod
+  -> FixedFee
+  -> MaxChangePercent
+  -> ChangePercent
+  -> GovernanceTotalSupply
+  -> Config
+mkConfig customEps votingPeriod fixedProposalFee maxChangePercent changePercent governanceTotalSupply = Config'
   { cProposalCheck = do
       dropN @2; push True
   , cRejectedProposalReturnValue = do
       dropN @2; push (0 :: Natural); toNamed #slash_amount
   , cDecisionLambda = do
       drop; nil
-  , cCustomEntrypoints = DynamicRec $ BigMap $ M.fromList customEps
-  , cQuorumThreshold = quorumThreshold
+  , cCustomEntrypoints = DynamicRec' $ BigMap $ M.fromList customEps
+  , cFixedProposalFee = fixedProposalFee
   , cVotingPeriod = votingPeriod
+  , cProposalFlushTime = (unVotingPeriod votingPeriod) * 2
+  , cProposalExpiredTime = (unVotingPeriod votingPeriod) * 3
+  , cMaxQuorumChange = percentageToFractionNumerator maxChangePercent
+  , cQuorumChange = percentageToFractionNumerator changePercent
+  , cGovernanceTotalSupply = governanceTotalSupply
+  , cMaxQuorumThreshold = mkQuorumThreshold 99 100 -- 99%
+  , cMinQuorumThreshold = mkQuorumThreshold 1 100 -- 1%
 
   , cMaxVotes = 1000
   , cMaxProposals = 500
   }
 
 defaultConfig :: Config
-defaultConfig = mkConfig [] (QuorumThreshold 1 100) 10
+defaultConfig = mkConfig [] 10 0 19 5 500
 
-data FullStorage = FullStorage
-  { fsStorage :: Storage
-  , fsConfig :: Config
+data FullStorage' big_map = FullStorage'
+  { fsStorage :: Storage' big_map
+  , fsConfig :: Config' big_map
   }
-  deriving stock (Show)
+
+-- Note: FullStorage is a tuple in ligo, so we need to use `ligoCombLayout`
+-- Derive Generic on `FullStorage'` does not work.
+customGeneric "FullStorage'" ligoCombLayout
+
+type FullStorage = FullStorage' BigMap
+deriving stock instance Show FullStorage
+deriving anyclass instance IsoValue FullStorage
+instance HasAnnotation FullStorage where
+  annOptions = baseDaoAnnOptions
+
+-- | Represents a storage value retrieved using the Tezos RPC.
+--
+-- 'FullStorageView' is very similar to 'FullStorage',
+-- except 'BigMap's have been replaced by 'BigMapId'.
+-- This is because, when a contract's storage is queried, the Tezos RPC returns
+-- big_maps' IDs instead of their contents.
+type FullStorageView = FullStorage' BigMapId
+deriving stock instance Show FullStorageView
+deriving anyclass instance IsoValue FullStorageView
 
 mkFullStorage
   :: "admin" :! Address
   -> "votingPeriod" :? VotingPeriod
   -> "quorumThreshold" :? QuorumThreshold
+  -> "maxChangePercent" :? MaxChangePercent
+  -> "changePercent" :? ChangePercent
+  -> "governanceTotalSupply" :? GovernanceTotalSupply
   -> "extra" :! ContractExtra
   -> "metadata" :! TZIP16.MetadataMap BigMap
   -> "now" :! Timestamp
   -> "tokenAddress" :! Address
   -> "customEps" :? [CustomEntrypoint]
   -> FullStorage
-mkFullStorage admin vp qt extra mdt now tokenAddress cEps = FullStorage
-  { fsStorage = mkStorage admin extra mdt now tokenAddress
+mkFullStorage admin vp qt mcp cp gts extra mdt now tokenAddress cEps = FullStorage'
+  { fsStorage = mkStorage admin extra mdt now tokenAddress (#quorumThreshold (argDef #quorumThreshold quorumThresholdDef qt))
   , fsConfig  = mkConfig (argDef #customEps [] cEps)
-      (argDef #quorumThreshold quorumThresholdDef qt) (argDef #votingPeriod votingPeriodDef vp)
+      (argDef #votingPeriod votingPeriodDef vp) 0 (argDef #maxChangePercent 19 mcp) (argDef #changePercent 5 cp) (argDef #governanceTotalSupply 100 gts)
   }
   where
-    quorumThresholdDef = QuorumThreshold 1 10 -- 10% of frozen total supply
+    quorumThresholdDef = mkQuorumThreshold 1 10 -- 10% of frozen total supply
     votingPeriodDef = 60 * 60 * 24 * 7  -- 7 days
 
 setExtra :: forall a. NicePackedValue a => MText -> a -> FullStorage -> FullStorage
-setExtra key v (s@FullStorage {..}) = s { fsStorage = newStorage }
+setExtra key v (s@FullStorage' {..}) = s { fsStorage = newStorage }
   where
     (BigMap oldExtra) = unDynamic $ sExtra fsStorage
     newExtra = BigMap $ M.insert key (lPackValueRaw v) oldExtra
-    newStorage = fsStorage { sExtra = DynamicRec newExtra }
+    newStorage = fsStorage { sExtra = DynamicRec' newExtra }
 
 -- Instances
 ------------------------------------------------
@@ -611,21 +758,13 @@ instance ParameterHasEntrypoints Parameter where
 customGeneric "AddressFreezeHistory" ligoLayout
 deriving anyclass instance IsoValue AddressFreezeHistory
 
-customGeneric "Storage" ligoLayout
-deriving anyclass instance IsoValue Storage
-
-customGeneric "Config" ligoLayout
-deriving anyclass instance IsoValue Config
-
-deriving stock instance Generic FullStorage
-deriving anyclass instance IsoValue FullStorage
 
 -- Lenses
 ------------------------------------------------
 
 makeLensesFor
   [ ("sOperators", "sOperatorsLens")
-  ] ''Storage
+  ] ''Storage'
 
 ------------------------------------------------------------------------
 -- Errors
@@ -752,19 +891,19 @@ instance CustomErrorHasDoc "bAD_ENTRYPOINT_PARAMETER" where
   customErrClass = ErrClassBadArgument
   customErrDocMdCause = "Value passed to the entrypoint is not valid"
 
-type instance ErrorArg "fAIL_DROP_PROPOSAL_NOT_OVER" = NoErrorArg
+type instance ErrorArg "dROP_PROPOSAL_CONDITION_NOT_MET" = NoErrorArg
 
-instance CustomErrorHasDoc "fAIL_DROP_PROPOSAL_NOT_OVER" where
+instance CustomErrorHasDoc "dROP_PROPOSAL_CONDITION_NOT_MET" where
   customErrClass = ErrClassActionException
   customErrDocMdCause =
-    "An error occurred when trying to drop a proposal due to the proposal's voting period is not over"
+    "Throw when calling `drop_proposal` when the sender is not proposer or guardian and proposal is not expired."
 
-type instance ErrorArg "fAIL_DROP_PROPOSAL_NOT_ACCEPTED" = NoErrorArg
+type instance ErrorArg "eXPIRED_PROPOSAL" = NoErrorArg
 
-instance CustomErrorHasDoc "fAIL_DROP_PROPOSAL_NOT_ACCEPTED" where
+instance CustomErrorHasDoc "eXPIRED_PROPOSAL" where
   customErrClass = ErrClassActionException
   customErrDocMdCause =
-    "An error occurred when trying to drop a proposal due to the proposal is not an accepted proposal"
+    "Throw when trying to `flush` expired proposals."
 
 type instance ErrorArg "nEGATIVE_TOTAL_SUPPLY" = ()
 

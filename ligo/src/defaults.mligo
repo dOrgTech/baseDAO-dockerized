@@ -4,18 +4,31 @@
 #include "types.mligo"
 #include "proposal.mligo"
 
-let default_config (data : initial_config_data) : config = {
-  proposal_check = (fun (params, extras : propose_params * contract_extra) -> true);
-  rejected_proposal_return_value = (fun (proposal, extras : proposal * contract_extra) -> 0n);
-  decision_lambda = (fun (proposal, extras : proposal * contract_extra) -> (([] : (operation list)), extras));
+let validate_default_config (data : initial_config_data) : unit =
+  if data.proposal_expired_time <= data.proposal_flush_time then
+    failwith("proposal_expired_time needs to be bigger than proposal_flush_time")
+  else if data.proposal_flush_time <= (data.voting_period.length * 2n) then
+    failwith("proposal_flush_time needs to be more than twice the voting_period length")
+  else unit
 
-  quorum_threshold = data.quorum_threshold;
-  voting_period = data.voting_period;
-  max_proposals = 500n;
-  max_votes = 1000n;
-
-  custom_entrypoints = (Big_map.empty : custom_entrypoints);
-}
+let default_config (data : initial_config_data) : config =
+  let u : unit = validate_default_config(data) in {
+    proposal_check = (fun (params, extras : propose_params * contract_extra) -> true);
+    rejected_proposal_return_value = (fun (proposal, extras : proposal * contract_extra) -> 0n);
+    decision_lambda = (fun (proposal, extras : proposal * contract_extra) -> (([] : (operation list)), extras));
+    fixed_proposal_fee_in_token = data.fixed_proposal_fee_in_token;
+    voting_period = data.voting_period;
+    max_proposals = 500n;
+    max_votes = 1000n;
+    max_quorum_threshold = data.max_quorum;
+    min_quorum_threshold = data.min_quorum;
+    max_quorum_change = data.max_quorum_change;
+    quorum_change = data.quorum_change;
+    governance_total_supply = data.governance_total_supply;
+    proposal_flush_time = data.proposal_flush_time;
+    proposal_expired_time = data.proposal_expired_time;
+    custom_entrypoints = (Big_map.empty : custom_entrypoints);
+  }
 
 let ledger_constructor (ledger, param : ledger * (ledger_key * ledger_value)) : ledger =
   let (key, value) = param in
@@ -29,12 +42,18 @@ let total_supply_constructor (total_supply, param : total_supply * (ledger_key *
     | Some v -> Map.add token_id (v + value) total_supply
 
 let default_storage (data, config_data : initial_storage_data * initial_config_data ) : storage =
+  let quorum_threshold =
+        bound_qt
+          (  to_signed(config_data.quorum_threshold)
+          ,  to_signed(config_data.min_quorum)
+          ,  to_signed(config_data.max_quorum) ) in
   let frozen_token_id: nat = 0n in
   {
     ledger = List.fold ledger_constructor data.ledger_lst (Big_map.empty : ledger);
     operators = (Big_map.empty : operators);
     governance_token = data.governance_token;
     admin = data.admin;
+    guardian = data.guardian;
     pending_owner = data.admin;
     metadata = data.metadata_map;
     extra = (Big_map.empty : (string, bytes) big_map);
@@ -46,10 +65,16 @@ let default_storage (data, config_data : initial_storage_data * initial_config_d
       [ (frozen_token_id, 0n)
       ]
     );
-    fixed_proposal_fee_in_token = 0n;
     frozen_token_id = frozen_token_id;
-    start_time = data.now_val
-}
+    start_time = data.now_val;
+    quorum_threshold_at_cycle =
+      { last_updated_cycle = 1n
+      // We use 1 here so that the initial quorum will be used for proposals raised in period 1
+      // as there is no meaningful participation before that.
+      ; quorum_threshold = to_unsigned(quorum_threshold)
+      ; staked = 0n
+      };
+  }
 
 let default_full_storage (data : initial_data) : full_storage =
   ( default_storage (data.storage_data, data.config_data), default_config (data.config_data) )

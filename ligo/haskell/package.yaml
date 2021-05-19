@@ -94,6 +94,7 @@ library:
   dependencies:
     - cleveland
     - containers
+    - data-default
     - directory
     - filepath
     - text
@@ -101,6 +102,7 @@ library:
     - lens
     - lorentz
     - morley
+    - morley-client
     - morley-ledgers
     - morley-metadata
     - morley-prelude

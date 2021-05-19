@@ -25,41 +25,47 @@ voteNonExistingProposal
   :: (MonadNettest caps base m, HasCallStack)
   => (ConfigDesc Config -> OriginateFn m) -> m ()
 voteNonExistingProposal originateFn = do
-  ((owner1, _), (owner2, _), dao, _, _) <- originateFn testConfig
+  DaoOriginateData{..} <- originateFn testConfig
+
+  withSender dodOwner2 $
+    call dodDao (Call @"Freeze") (#amount .! 2)
+
+  withSender dodOwner1 $
+    call dodDao (Call @"Freeze") (#amount .! 10)
+
+  -- Advance one voting period to a proposing stage.
   advanceTime (sec 10)
-
-  withSender (AddressResolved owner2) $
-    call dao (Call @"Freeze") (#amount .! 2)
-
   -- Create sample proposal
-  _ <- createSampleProposal 1 10 owner1 dao
+  _ <- createSampleProposal 1 dodOwner1 dodDao
   let params = NoPermit VoteParam
         { vVoteType = True
         , vVoteAmount = 2
-        , vProposalKey = HashUnsafe "\11\12\13"
+        , vProposalKey = UnsafeHash "\11\12\13"
         }
+  -- Advance one voting period to a voting stage.
   advanceTime (sec 10)
 
-  withSender (AddressResolved owner2) $ call dao (Call @"Vote") [params]
-    & expectCustomErrorNoArg #pROPOSAL_NOT_EXIST dao
+  withSender dodOwner2 $ call dodDao (Call @"Vote") [params]
+    & expectCustomErrorNoArg #pROPOSAL_NOT_EXIST dodDao
 
 voteMultiProposals
   :: (MonadNettest caps base m, HasCallStack)
   => (ConfigDesc Config -> OriginateFn m) -> m ()
 voteMultiProposals originateFn = do
-  ((owner1, _), (owner2, _), dao, _, _) <- originateFn voteConfig
+  DaoOriginateData{..} <- originateFn voteConfig
 
-  advanceTime (sec 10)
-  withSender (AddressResolved owner1) $
-    call dao (Call @"Freeze") (#amount .! 20)
+  withSender dodOwner1 $
+    call dodDao (Call @"Freeze") (#amount .! 20)
 
-  withSender (AddressResolved owner2) $
-    call dao (Call @"Freeze") (#amount .! 5)
+  withSender dodOwner2 $
+    call dodDao (Call @"Freeze") (#amount .! 5)
+
+  -- Advance one voting period to a proposing stage.
   advanceTime (sec 10)
 
   -- Create sample proposal
-  key1 <- createSampleProposal 1 0 owner1 dao
-  key2 <- createSampleProposal 2 0 owner1 dao
+  key1 <- createSampleProposal 1 dodOwner1 dodDao
+  key2 <- createSampleProposal 2 dodOwner1 dodDao
   let params = fmap NoPermit
         [ VoteParam
             { vVoteType = True
@@ -73,22 +79,29 @@ voteMultiProposals originateFn = do
             }
         ]
 
+  -- Advance one voting period to a voting stage.
   advanceTime (sec 10)
-  withSender (AddressResolved owner2) $ call dao (Call @"Vote") params
-  checkTokenBalance (frozenTokenId) dao owner2 105
+  withSender dodOwner2 $ call dodDao (Call @"Vote") params
+  checkTokenBalance (frozenTokenId) dodDao dodOwner2 105
   -- TODO [#31]: check storage if the vote update the proposal properly
 
 voteOutdatedProposal
   :: (MonadNettest caps base m, HasCallStack)
   => (ConfigDesc Config -> OriginateFn m) -> m ()
 voteOutdatedProposal originateFn = do
-  ((owner1, _), (owner2, _), dao, _, _) <- originateFn testConfig
+  DaoOriginateData{..} <- originateFn testConfig
+
+  withSender dodOwner2 $
+    call dodDao (Call @"Freeze") (#amount .! 2)
+
+  withSender dodOwner1 $
+    call dodDao (Call @"Freeze") (#amount .! 10)
+
+  -- Advance one voting period to a proposing stage.
   advanceTime (sec 10)
 
-  withSender (AddressResolved owner2) $
-    call dao (Call @"Freeze") (#amount .! 2)
   -- Create sample proposal
-  key1 <- createSampleProposal 1 10 owner1 dao
+  key1 <- createSampleProposal 1 dodOwner1 dodDao
 
   let params = NoPermit VoteParam
         { vVoteType = True
@@ -96,9 +109,12 @@ voteOutdatedProposal originateFn = do
         , vProposalKey = key1
         }
 
+  -- Advance one voting period to a voting stage.
   advanceTime (sec 10)
-  withSender (AddressResolved owner2) $ do
-    call dao (Call @"Vote") [params]
+
+  withSender dodOwner2 $ do
+    call dodDao (Call @"Vote") [params]
+    -- Advance two voting period to another voting stage.
     advanceTime (sec 25)
-    call dao (Call @"Vote") [params]
-      & expectCustomErrorNoArg #vOTING_PERIOD_OVER dao
+    call dodDao (Call @"Vote") [params]
+      & expectCustomErrorNoArg #vOTING_PERIOD_OVER dodDao

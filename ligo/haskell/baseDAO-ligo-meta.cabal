@@ -39,12 +39,14 @@ library
       base-noprelude >=4.7 && <5
     , cleveland
     , containers
+    , data-default
     , directory
     , filepath
     , fmt
     , lens
     , lorentz
     , morley
+    , morley-client
     , morley-ledgers
     , morley-metadata
     , morley-prelude
@@ -80,6 +82,7 @@ test-suite baseDAO-test
   other-modules:
       Ligo.BaseDAO.Contract
       Test.Ligo.BaseDAO.Common
+      Test.Ligo.BaseDAO.Common.StorageHelper
       Test.Ligo.BaseDAO.FA2
       Test.Ligo.BaseDAO.Integrational.Common
       Test.Ligo.BaseDAO.Integrational.Proposal

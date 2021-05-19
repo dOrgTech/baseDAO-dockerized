@@ -21,7 +21,8 @@ import Ligo.BaseDAO.Common.Types
 import Ligo.BaseDAO.Types
 import Ligo.Util
 import Test.Ligo.BaseDAO.Common
-  (OriginateFn, TransferProposal(..), checkTokenBalance, makeProposalKey, originateLigoDaoWithBalance, sendXtz)
+  ( DaoOriginateData(..), OriginateFn, TransferProposal(..)
+  , checkTokenBalance, makeProposalKey, originateLigoDaoWithBalance, sendXtz )
 
 {-# ANN module ("HLint: ignore Reduce duplication" :: Text) #-}
 
@@ -48,9 +49,9 @@ test_TreasuryDAO = testGroup "TreasuryDAO Tests"
 metadataSize :: ByteString -> Natural
 metadataSize md = fromIntegral $ BS.length md
 
-validProposal :: (Monad m, HasCallStack) => NettestImpl m -> m ()
+validProposal :: HasCallStack => NettestScenario m
 validProposal = uncapsNettest $ withFrozenCallStack do
-  ((owner1, _), (owner2, _), dao, _, _) <-
+  DaoOriginateData{..} <-
     originateTreasuryDaoWithBalance $ \owner1_ owner2_ ->
       [ ((owner1_, frozenTokenId), 200)
       , ((owner2_, frozenTokenId), 200)
@@ -59,31 +60,29 @@ validProposal = uncapsNettest $ withFrozenCallStack do
     proposalMeta = lPackValueRaw @TreasuryDaoProposalMetadata $
       TransferProposal
         { tpAgoraPostId = 1
-        , tpTransfers = [ tokenTransferType (toAddress dao) owner1 owner2 ]
+        , tpTransfers = [ tokenTransferType (toAddress dodDao) dodOwner1 dodOwner2 ]
         }
     proposalSize = metadataSize proposalMeta -- 115
 
-  -- Advance one voting period.
+  -- Freeze in voting stage.
+  withSender dodOwner1 $
+    call dodDao (Call @"Freeze") (#amount .! proposalSize)
+
+  -- Advance one voting period to a proposing stage.
   advanceTime (sec 10)
 
-  withSender (AddressResolved owner1) $
-    call dao (Call @"Freeze") (#amount .! proposalSize)
+  withSender dodOwner1 $
+    call dodDao (Call @"Propose") (ProposeParams (proposalSize + 1) proposalMeta)
+    & expectCustomErrorNoArg #fAIL_PROPOSAL_CHECK dodDao
 
-  -- Advance one voting period.
-  advanceTime (sec 10)
+  withSender dodOwner1 $
+    call dodDao (Call @"Propose") (ProposeParams proposalSize proposalMeta)
 
-  withSender (AddressResolved owner1) $
-    call dao (Call @"Propose") (ProposeParams (proposalSize + 1) proposalMeta)
-    & expectCustomErrorNoArg #fAIL_PROPOSAL_CHECK dao
+  checkTokenBalance frozenTokenId dodDao dodOwner1 (200 + proposalSize)
 
-  withSender (AddressResolved owner1) $
-    call dao (Call @"Propose") (ProposeParams proposalSize proposalMeta)
-
-  checkTokenBalance frozenTokenId dao owner1 315
-
-flushTokenTransfer :: (Monad m, HasCallStack) => NettestImpl m -> m ()
+flushTokenTransfer :: HasCallStack => NettestScenario m
 flushTokenTransfer = uncapsNettest $ withFrozenCallStack $ do
-  ((owner1, _), (owner2, _), dao, fa2Contract, admin) <-
+  DaoOriginateData{..} <-
     originateTreasuryDaoWithBalance $ \_ owner2_ ->
       [ ((owner2_, frozenTokenId), 100)
       ]
@@ -92,26 +91,24 @@ flushTokenTransfer = uncapsNettest $ withFrozenCallStack $ do
     proposalMeta = lPackValueRaw @TreasuryDaoProposalMetadata $
       TransferProposal
         { tpAgoraPostId = 1
-        , tpTransfers = [ tokenTransferType (toAddress fa2Contract) owner2 owner1 ]
+        , tpTransfers = [ tokenTransferType (toAddress dodTokenContract) dodOwner2 dodOwner1 ]
         }
     proposalSize = metadataSize proposalMeta
     proposeParams = ProposeParams proposalSize proposalMeta
 
-  withSender (AddressResolved owner1) $
-    call dao (Call @"Freeze") (#amount .! proposalSize)
+  withSender dodOwner1 $
+    call dodDao (Call @"Freeze") (#amount .! proposalSize)
 
-  withSender (AddressResolved owner2) $
-    call dao (Call @"Freeze") (#amount .! 20)
+  withSender dodOwner2 $
+    call dodDao (Call @"Freeze") (#amount .! 20)
 
-  -- Advance two voting periods so that we are in a
-  -- proposal period.
-  advanceTime (sec 20)
+  -- Advance one voting periods to a proposing stage.
+  advanceTime (sec 10)
 
-  withSender (AddressResolved owner1) $
-    call dao (Call @"Propose") proposeParams
-  let key1 = makeProposalKey proposeParams owner1
+  withSender dodOwner1 $ call dodDao (Call @"Propose") proposeParams
+  let key1 = makeProposalKey proposeParams dodOwner1
 
-  checkTokenBalance frozenTokenId dao owner1 115
+  checkTokenBalance frozenTokenId dodDao dodOwner1 proposalSize
 
   let
     upvote = NoPermit VoteParam
@@ -120,52 +117,54 @@ flushTokenTransfer = uncapsNettest $ withFrozenCallStack $ do
         , vProposalKey = key1
         }
 
+  -- Advance one voting period to a voting stage.
   advanceTime (sec 10)
-  withSender (AddressResolved owner2) $ call dao (Call @"Vote") [upvote]
+  withSender dodOwner2 $ call dodDao (Call @"Vote") [upvote]
+  -- Advance one voting period to a proposing stage.
   advanceTime (sec 10)
-  withSender (AddressResolved admin) $ call dao (Call @"Flush") 100
+  withSender dodAdmin $ call dodDao (Call @"Flush") 100
 
-  checkTokenBalance frozenTokenId dao owner1 proposalSize
-  checkTokenBalance frozenTokenId dao owner2 120
+  checkTokenBalance frozenTokenId dodDao dodOwner1 proposalSize
+  checkTokenBalance frozenTokenId dodDao dodOwner2 120
 
-flushXtzTransfer :: (Monad m, HasCallStack) => NettestImpl m -> m ()
+flushXtzTransfer :: HasCallStack => NettestScenario m
 flushXtzTransfer = uncapsNettest $ withFrozenCallStack $ do
-  ((owner1, _), (owner2, _), dao, _, admin) <-
+  DaoOriginateData{..} <-
     originateTreasuryDaoWithBalance $ \_ _ ->
       []
 
-  sendXtz (toAddress dao) (unsafeBuildEpName "callCustom") ([mt|receive_xtz|], lPackValueRaw ())
+  sendXtz (toAddress dodDao) (unsafeBuildEpName "callCustom") ([mt|receive_xtz|], lPackValueRaw ())
 
   let
     proposalMeta amt = lPackValueRaw @TreasuryDaoProposalMetadata $
       TransferProposal
         { tpAgoraPostId = 1
-        , tpTransfers = [ xtzTransferType amt owner2 ]
+        , tpTransfers = [ xtzTransferType amt dodOwner2 ]
         }
     proposeParams amt = ProposeParams (metadataSize $ proposalMeta amt) $ proposalMeta amt
 
-  advanceTime (sec 10)
-  withSender (AddressResolved owner1) $
-    call dao (Call @"Freeze") (#amount .! (metadataSize $ proposalMeta 3))
+  -- Freeze in initial voting stage.
+  withSender dodOwner1 $
+    call dodDao (Call @"Freeze") (#amount .! (metadataSize $ proposalMeta 3))
 
-  withSender (AddressResolved owner2) $
-    call dao (Call @"Freeze") (#amount .! 10)
-  -- Advance one voting period.
+  withSender dodOwner2 $
+    call dodDao (Call @"Freeze") (#amount .! 10)
+  -- Advance one voting period to a proposing stage.
   advanceTime (sec 10)
 
-  withSender (AddressResolved owner1) $ do
+  withSender dodOwner1 $ do
   -- due to smaller than min_xtz_amount
-    call dao (Call @"Propose") (proposeParams 1)
-      & expectCustomErrorNoArg #fAIL_PROPOSAL_CHECK dao
+    call dodDao (Call @"Propose") (proposeParams 1)
+      & expectCustomErrorNoArg #fAIL_PROPOSAL_CHECK dodDao
 
   -- due to bigger than max_xtz_amount
-    call dao (Call @"Propose") (proposeParams 6)
-      & expectCustomErrorNoArg #fAIL_PROPOSAL_CHECK dao
+    call dodDao (Call @"Propose") (proposeParams 6)
+      & expectCustomErrorNoArg #fAIL_PROPOSAL_CHECK dodDao
 
-    call dao (Call @"Propose") (proposeParams 3)
-  let key1 = makeProposalKey (proposeParams 3) owner1
+    call dodDao (Call @"Propose") (proposeParams 3)
+  let key1 = makeProposalKey (proposeParams 3) dodOwner1
 
-  checkTokenBalance (frozenTokenId) dao owner1 43
+  checkTokenBalance (frozenTokenId) dodDao dodOwner1 43
 
   let
     upvote = NoPermit VoteParam
@@ -174,10 +173,12 @@ flushXtzTransfer = uncapsNettest $ withFrozenCallStack $ do
         , vProposalKey = key1
         }
 
+  -- Advance one voting period to a voting stage.
   advanceTime (sec 10)
-  withSender (AddressResolved owner2) $ call dao (Call @"Vote") [upvote]
+  withSender dodOwner2 $ call dodDao (Call @"Vote") [upvote]
+  -- Advance one voting period to a proposing stage.
   advanceTime (sec 10)
-  withSender (AddressResolved admin) $ call dao (Call @"Flush") 100
+  withSender dodAdmin $ call dodDao (Call @"Flush") 100
 
 --   -- TODO: check xtz balance
 
@@ -210,7 +211,7 @@ originateTreasuryDaoWithBalance
  => (Address -> Address -> [(LedgerKey, LedgerValue)]) -> OriginateFn m
 originateTreasuryDaoWithBalance bal =
   let fs = fromVal ($(fetchValue @FullStorage "haskell/test/treasuryDAO_storage.tz" "TREASURY_STORAGE_PATH"))
-      FullStorage{..} = fs
+      FullStorage'{..} = fs
         & setExtra @Natural [mt|frozen_scale_value|] 1
         & setExtra @Natural [mt|frozen_extra_value|] 0
         & setExtra @Natural [mt|slash_scale_value|] 1
@@ -219,4 +220,11 @@ originateTreasuryDaoWithBalance bal =
         & setExtra @Natural [mt|min_xtz_amount|] 2
         & setExtra @Natural [mt|max_xtz_amount|] 5
 
-  in originateLigoDaoWithBalance (sExtra fsStorage) (fsConfig { cQuorumThreshold = QuorumThreshold 1 100, cVotingPeriod = 10 }) bal
+  in originateLigoDaoWithBalance (sExtra fsStorage)
+      (fsConfig
+        { cMinQuorumThreshold = mkQuorumThreshold 1 100
+        , cVotingPeriod = 10
+        , cProposalFlushTime = 20
+        , cProposalExpiredTime = 30
+        }
+      ) bal

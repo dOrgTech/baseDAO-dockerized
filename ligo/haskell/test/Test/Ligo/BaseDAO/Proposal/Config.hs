@@ -84,13 +84,15 @@ data ConfigConstants = ConfigConstants
   , cmMaxVotes :: Maybe Natural
   , cmQuorumThreshold :: Maybe DAO.QuorumThreshold
   , cmVotingPeriod :: Maybe DAO.VotingPeriod
+  , cmProposalFlushTime :: Maybe Natural
+  , cmProposalExpiredTime :: Maybe Natural
   }
 
 -- | Constructor for config descriptor that overrides config constants.
 --
 -- Example: @configConsts{ cmMinVotingPeriod = 10 }@
 configConsts :: ConfigConstants
-configConsts = ConfigConstants Nothing Nothing Nothing Nothing
+configConsts = ConfigConstants Nothing Nothing Nothing Nothing Nothing Nothing
 
 data ProposalFrozenTokensCheck =
   ProposalFrozenTokensCheck (Lambda ("ppFrozenToken" :! Natural) Bool)
@@ -147,7 +149,7 @@ testConfig
 testConfig =
   ConfigDesc (proposalFrozenTokensMinBound 10) >>-
   ConfigDesc configConsts
-    { cmQuorumThreshold = Just (DAO.QuorumThreshold 1 100) }
+    { cmQuorumThreshold = Just (DAO.mkQuorumThreshold 1 100) }
 
 -- | Config with longer voting period and bigger quorum threshold
 -- Needed for vote related tests that do not call `flush`
@@ -157,7 +159,7 @@ voteConfig
 voteConfig = ConfigDesc $
   ConfigDesc (proposalFrozenTokensMinBound 10) >>-
   ConfigDesc configConsts
-    { cmQuorumThreshold = Just (DAO.QuorumThreshold 4 100) }
+    { cmQuorumThreshold = Just (DAO.mkQuorumThreshold 4 100) }
 
 configWithRejectedProposal
   :: AreConfigDescsExt config '[RejectedProposalReturnValue]
@@ -178,26 +180,36 @@ decisionLambdaConfig target = ConfigDesc $ passProposerOnDecision target
 --------------------------------------------------------------------------------
 --
 instance IsConfigDescExt DAO.Config ConfigConstants where
-  fillConfig ConfigConstants{..} DAO.Config{..} = DAO.Config
+  fillConfig ConfigConstants{..} DAO.Config'{..} = DAO.Config'
     { cMaxProposals = cmMaxProposals ?: cMaxProposals
     , cMaxVotes = cmMaxVotes ?: cMaxVotes
+    , cProposalFlushTime = cmProposalFlushTime ?: cProposalFlushTime
+    , cProposalExpiredTime = cmProposalExpiredTime ?: cProposalExpiredTime
     , ..
     }
 
 instance IsConfigDescExt DAO.Config DAO.QuorumThreshold where
-  fillConfig qt DAO.Config{..} = DAO.Config
-    { cQuorumThreshold = qt
+  fillConfig qt DAO.Config'{..} = DAO.Config'
+    -- We set min quorum threshold since we use it to initialize
+    -- the quorumThreshold in storage in tests.
+    { cMinQuorumThreshold = qt
     , ..
     }
 
 instance IsConfigDescExt DAO.Config DAO.VotingPeriod where
-  fillConfig vp DAO.Config{..} = DAO.Config
+  fillConfig vp DAO.Config'{..} = DAO.Config'
     { cVotingPeriod = vp
     , ..
     }
 
+instance IsConfigDescExt DAO.Config DAO.FixedFee where
+  fillConfig ff DAO.Config'{..} = DAO.Config'
+    { cFixedProposalFee = ff
+    , ..
+    }
+
 instance IsConfigDescExt DAO.Config ProposalFrozenTokensCheck where
-  fillConfig (ProposalFrozenTokensCheck check) DAO.Config{..} = DAO.Config
+  fillConfig (ProposalFrozenTokensCheck check) DAO.Config'{..} = DAO.Config'
     { cProposalCheck = do
         dip drop
         toFieldNamed #ppFrozenToken
@@ -206,8 +218,8 @@ instance IsConfigDescExt DAO.Config ProposalFrozenTokensCheck where
     }
 
 instance IsConfigDescExt DAO.Config RejectedProposalReturnValue where
-  fillConfig (RejectedProposalReturnValue toReturnValue) DAO.Config{..} =
-    DAO.Config
+  fillConfig (RejectedProposalReturnValue toReturnValue) DAO.Config'{..} =
+    DAO.Config'
     { cRejectedProposalReturnValue = do
         dip drop
         toField #plProposerFrozenToken; toNamed #proposerFrozenToken
@@ -216,8 +228,8 @@ instance IsConfigDescExt DAO.Config RejectedProposalReturnValue where
     }
 
 instance IsConfigDescExt DAO.Config DecisionLambdaAction where
-  fillConfig (DecisionLambdaAction lam) DAO.Config{..} =
-    DAO.Config
+  fillConfig (DecisionLambdaAction lam) DAO.Config'{..} =
+    DAO.Config'
     { cDecisionLambda = do
         getField #plProposerFrozenToken; toNamed #frozen_tokens
         dip $ do toField #plProposer; toNamed #proposer
