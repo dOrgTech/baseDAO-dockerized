@@ -27,11 +27,10 @@ module Ligo.BaseDAO.Types
     -- * Voting
   , QuorumThreshold (..)
   , QuorumThresholdAtCycle (..)
-  , VotingPeriod (..)
+  , Period (..)
   , VoteParam (..)
   , Voter (..)
-  , MaxChangePercent (..)
-  , ChangePercent (..)
+  , QuorumFraction (..)
   , GovernanceTotalSupply (..)
   , mkQuorumThreshold
   , fractionDenominator
@@ -76,7 +75,7 @@ module Ligo.BaseDAO.Types
   , sOperatorsLens
   ) where
 
-import Universum (Num, One(..), div, maybe, (*))
+import Universum (Enum, Integral, Num, One(..), Real, div, maybe, (*))
 
 import Control.Lens (makeLensesFor)
 import qualified Data.Map as M
@@ -179,10 +178,11 @@ type ProposalKey = Hash Blake2b $ Packed (ProposeParams, Address)
 -- regardless of upvotes > downvotes
 -- A proposal will be accepted only if:
 -- (quorum_threshold * total_supply >= upvote + downvote) && (upvote > downvote)
-data QuorumThreshold = QuorumThreshold
+newtype QuorumThreshold = QuorumThreshold
   { qtNumerator :: Natural
   }
-  deriving stock (Eq, Generic, Show)
+  deriving stock (Generic, Show)
+  deriving newtype (Enum, Ord, Eq, Num, Real, Integral)
   deriving anyclass IsoValue
 
 fractionDenominator :: Integer
@@ -197,30 +197,21 @@ mkQuorumThreshold n d = QuorumThreshold $ fromInteger $ div (n * fractionDenomin
 instance HasAnnotation QuorumThreshold where
   annOptions = baseDaoAnnOptions
 
--- | Voting period in seconds
-newtype VotingPeriod = VotingPeriod { unVotingPeriod :: Natural}
+-- | Stages length, in seconds
+newtype Period = Period { unPeriod :: Natural}
   deriving stock (Generic, Show)
   deriving newtype Num
   deriving anyclass IsoValue
 
-instance HasAnnotation VotingPeriod where
+instance HasAnnotation Period where
   annOptions = baseDaoAnnOptions
 
-newtype MaxChangePercent = MaxChangePercent Natural
+newtype QuorumFraction = QuorumFraction Integer
   deriving stock (Generic, Show)
-  deriving newtype Num
+  deriving newtype (Enum, Ord, Eq, Num, Real, Integral)
   deriving anyclass IsoValue
 
-instance HasAnnotation MaxChangePercent where
-  annOptions = baseDaoAnnOptions
-
--- | Voting period in seconds
-newtype ChangePercent = ChangePercent Natural
-  deriving stock (Generic, Show)
-  deriving newtype Num
-  deriving anyclass IsoValue
-
-instance HasAnnotation ChangePercent where
+instance HasAnnotation QuorumFraction where
   annOptions = baseDaoAnnOptions
 
 -- | Voting period in seconds
@@ -437,7 +428,7 @@ data Proposal = Proposal
   { plUpvotes                 :: Natural
   , plDownvotes               :: Natural
   , plStartDate               :: Timestamp
-  , plPeriodNum               :: Natural
+  , plVotingStageNum          :: Natural
 
   , plMetadata                :: ProposalMetadata
 
@@ -488,7 +479,7 @@ data Parameter
 data AddressFreezeHistory = AddressFreezeHistory
   { fhCurrentUnstaked :: Natural
   , fhPastUnstaked :: Natural
-  , fhCurrentPeriodNum :: Natural
+  , fhCurrentStageNum :: Natural
   , fhStaked :: Natural
   } deriving stock (Eq, Show)
 
@@ -618,13 +609,13 @@ data Config' big_map = Config'
 
   , cMaxProposals :: Natural
   , cMaxVotes :: Natural
-  , cMaxQuorumThreshold :: QuorumThreshold
-  , cMinQuorumThreshold :: QuorumThreshold
+  , cMaxQuorumThreshold :: QuorumFraction
+  , cMinQuorumThreshold :: QuorumFraction
 
   , cFixedProposalFee :: FixedFee
-  , cVotingPeriod :: VotingPeriod
-  , cMaxQuorumChange :: MaxChangePercent
-  , cQuorumChange :: ChangePercent
+  , cPeriod :: Period
+  , cMaxQuorumChange :: QuorumFraction
+  , cQuorumChange :: QuorumFraction
   , cGovernanceTotalSupply :: GovernanceTotalSupply
   , cProposalFlushTime :: Natural
   , cProposalExpiredTime :: Natural
@@ -646,10 +637,10 @@ deriving anyclass instance IsoValue ConfigView
 
 mkConfig
   :: [CustomEntrypoint]
-  -> VotingPeriod
+  -> Period
   -> FixedFee
-  -> MaxChangePercent
-  -> ChangePercent
+  -> QuorumFraction
+  -> QuorumFraction
   -> GovernanceTotalSupply
   -> Config
 mkConfig customEps votingPeriod fixedProposalFee maxChangePercent changePercent governanceTotalSupply = Config'
@@ -661,14 +652,14 @@ mkConfig customEps votingPeriod fixedProposalFee maxChangePercent changePercent 
       drop; nil
   , cCustomEntrypoints = DynamicRec' $ BigMap $ M.fromList customEps
   , cFixedProposalFee = fixedProposalFee
-  , cVotingPeriod = votingPeriod
-  , cProposalFlushTime = (unVotingPeriod votingPeriod) * 2
-  , cProposalExpiredTime = (unVotingPeriod votingPeriod) * 3
+  , cPeriod = votingPeriod
+  , cProposalFlushTime = (unPeriod votingPeriod) * 2
+  , cProposalExpiredTime = (unPeriod votingPeriod) * 3
   , cMaxQuorumChange = percentageToFractionNumerator maxChangePercent
   , cQuorumChange = percentageToFractionNumerator changePercent
   , cGovernanceTotalSupply = governanceTotalSupply
-  , cMaxQuorumThreshold = mkQuorumThreshold 99 100 -- 99%
-  , cMinQuorumThreshold = mkQuorumThreshold 1 100 -- 1%
+  , cMaxQuorumThreshold = percentageToFractionNumerator 99 -- 99%
+  , cMinQuorumThreshold = percentageToFractionNumerator 1 -- 1%
 
   , cMaxVotes = 1000
   , cMaxProposals = 500
@@ -704,10 +695,10 @@ deriving anyclass instance IsoValue FullStorageView
 
 mkFullStorage
   :: "admin" :! Address
-  -> "votingPeriod" :? VotingPeriod
+  -> "votingPeriod" :? Period
   -> "quorumThreshold" :? QuorumThreshold
-  -> "maxChangePercent" :? MaxChangePercent
-  -> "changePercent" :? ChangePercent
+  -> "maxChangePercent" :? QuorumFraction
+  -> "changePercent" :? QuorumFraction
   -> "governanceTotalSupply" :? GovernanceTotalSupply
   -> "extra" :! ContractExtra
   -> "metadata" :! TZIP16.MetadataMap BigMap
@@ -805,9 +796,9 @@ instance CustomErrorHasDoc "nOT_ENOUGH_FROZEN_TOKENS" where
   customErrDocMdCause =
     "There were not enough frozen tokens for the operation"
 
-type instance ErrorArg "nOT_PROPOSING_PERIOD" = NoErrorArg
+type instance ErrorArg "nOT_PROPOSING_STAGE" = NoErrorArg
 
-instance CustomErrorHasDoc "nOT_PROPOSING_PERIOD" where
+instance CustomErrorHasDoc "nOT_PROPOSING_STAGE" where
   customErrClass = ErrClassActionException
   customErrDocMdCause =
     "Proposal creation attempted in non-proposal period"
@@ -839,9 +830,9 @@ instance CustomErrorHasDoc "pROPOSAL_NOT_EXIST" where
   customErrClass = ErrClassActionException
   customErrDocMdCause = "Trying to vote on a proposal that does not exist"
 
-type instance ErrorArg "vOTING_PERIOD_OVER" = NoErrorArg
+type instance ErrorArg "vOTING_STAGE_OVER" = NoErrorArg
 
-instance CustomErrorHasDoc "vOTING_PERIOD_OVER" where
+instance CustomErrorHasDoc "vOTING_STAGE_OVER" where
   customErrClass = ErrClassActionException
   customErrDocMdCause = "Trying to vote on a proposal that is already ended"
 

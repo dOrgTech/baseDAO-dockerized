@@ -51,7 +51,7 @@ let debit_from (amt, from_, token_id, ledger, total_supply: nat * address * toke
   let new_total_supply =
     match Michelson.is_nat (current_total_supply - amt) with
       Some new_total_supply -> new_total_supply
-    | None -> (failwith("NEGATIVE_TOTAL_SUPPLY") : nat)
+    | None -> (failwith("BAD_STATE") : nat)
     in
   let ledger = Big_map.update (from_, token_id) (Some new_balance) ledger in
   let total_supply = Map.update token_id (Some new_total_supply) total_supply in
@@ -91,7 +91,7 @@ let transfer_item (store, ti : storage * transfer_item): storage =
 
 let transfer (params, store : transfer_params * storage): return =
   let store = List.fold transfer_item params store in
-  (([] : operation list), store)
+  (nil_op, store)
 
 
 // -----------------------------------------------------------------
@@ -141,6 +141,5 @@ let update_one (store, param: storage * update_operator): storage =
     (failwith("NOT_OWNER") : storage)
 
 let update_operators (params, store : update_operators_param * storage):return =
-  let store = List.fold update_one params store in
-  (([] : operation list), store)
+  (nil_op, List.fold update_one params store)
 

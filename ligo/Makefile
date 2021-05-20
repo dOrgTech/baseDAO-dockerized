@@ -7,9 +7,6 @@ LIGO ?= ligo
 # Morley executable used for contract optimization
 MORLEY ?= morley
 
-# Morley tool executable for the origination of large contracts
-LARGE_ORIGINATOR ?= morley-large-originator
-
 # Env variable to determine whether the resulting contract should
 # be optimized via morley
 OPTIMIZE ?= false
@@ -22,12 +19,6 @@ BUILD_STORAGE = $(LIGO) compile-storage --syntax cameligo
 
 # Compile parameter
 BUILD_PARAMETER = $(LIGO) compile-parameter --syntax cameligo
-
-# Originate large contract (morley-client based)
-ORIGINATE ?= $(LARGE_ORIGINATOR) originate
-
-# Originate steps to build a large contract by other means
-ORIGINATE_STEPS ?= $(LARGE_ORIGINATOR) steps
 
 # Utility function to escape single quotes
 escape_quote = $(subst ','\'',$(1))
@@ -77,7 +68,7 @@ $(OUT)/trivialDAO_storage.tz : ledger = ([] : ledger_list)
 $(OUT)/trivialDAO_storage.tz : quorum_threshold = 10n
 $(OUT)/trivialDAO_storage.tz : min_quorum = 1n
 $(OUT)/trivialDAO_storage.tz : max_quorum = 99n
-$(OUT)/trivialDAO_storage.tz : voting_period = 950400n # 11 days
+$(OUT)/trivialDAO_storage.tz : period = 950400n # 11 days
 $(OUT)/trivialDAO_storage.tz : quorum_change = 5n
 $(OUT)/trivialDAO_storage.tz : max_quorum_change = 19n
 $(OUT)/trivialDAO_storage.tz : governance_total_supply = 100n
@@ -102,7 +93,7 @@ $(OUT)/trivialDAO_storage.tz: src/**
         ; config_data = \
           { max_quorum = { numerator = ($(max_quorum) * quorum_denominator)/100n } \
           ; min_quorum = { numerator = ($(min_quorum) * quorum_denominator)/100n } \
-          ; voting_period = { length = $(voting_period) } \
+          ; period = { length = $(period) } \
           ; proposal_flush_time = $(proposal_flush_time) \
           ; proposal_expired_time = $(proposal_expired_time) \
           ; quorum_threshold = { numerator = ($(quorum_threshold) * quorum_denominator)/100n } \
@@ -134,8 +125,7 @@ $(OUT)/registryDAO_storage.tz : ledger = ([] : ledger_list)
 $(OUT)/registryDAO_storage.tz : quorum_threshold = 10n
 $(OUT)/registryDAO_storage.tz : min_quorum = 1n
 $(OUT)/registryDAO_storage.tz : max_quorum = 99n
-
-$(OUT)/registryDAO_storage.tz : voting_period = 950400n # 11 days
+$(OUT)/registryDAO_storage.tz : period = 950400n # 11 days
 $(OUT)/registryDAO_storage.tz : quorum_change = 5n
 $(OUT)/registryDAO_storage.tz : max_quorum_change = 19n
 $(OUT)/registryDAO_storage.tz : proposal_flush_time = 1900801n # 22 days 1 seconds
@@ -161,7 +151,7 @@ $(OUT)/registryDAO_storage.tz: src/**
           ; config_data = \
             { max_quorum = { numerator = ($(max_quorum) * quorum_denominator)/100n } \
             ; min_quorum = { numerator = ($(min_quorum) * quorum_denominator)/100n } \
-            ; voting_period = { length = $(voting_period) } \
+            ; period = { length = $(period) } \
             ; proposal_flush_time = $(proposal_flush_time) \
             ; proposal_expired_time = $(proposal_expired_time) \
             ; fixed_proposal_fee_in_token = $(fixed_proposal_fee_in_token) \
@@ -200,7 +190,7 @@ $(OUT)/treasuryDAO_storage.tz : ledger = ([] : ledger_list)
 $(OUT)/treasuryDAO_storage.tz : quorum_threshold = 10n
 $(OUT)/treasuryDAO_storage.tz : min_quorum = 1n
 $(OUT)/treasuryDAO_storage.tz : max_quorum = 99n
-$(OUT)/treasuryDAO_storage.tz : voting_period = 950400n # 11 days
+$(OUT)/treasuryDAO_storage.tz : period = 950400n # 11 days
 $(OUT)/treasuryDAO_storage.tz : quorum_change = 5n
 $(OUT)/treasuryDAO_storage.tz : max_quorum_change = 19n
 $(OUT)/treasuryDAO_storage.tz : proposal_flush_time = 1900801n # 22 days 1 seconds
@@ -226,7 +216,7 @@ $(OUT)/treasuryDAO_storage.tz: src/**
           ; config_data = \
             { max_quorum = { numerator = ($(max_quorum) * quorum_denominator)/100n } \
             ; min_quorum = { numerator = ($(min_quorum) * quorum_denominator)/100n } \
-            ; voting_period = { length = $(voting_period) } \
+            ; period = { length = $(period) } \
             ; proposal_flush_time = $(proposal_flush_time) \
             ; proposal_expired_time = $(proposal_expired_time) \
             ; fixed_proposal_fee_in_token = $(fixed_proposal_fee_in_token) \
@@ -246,28 +236,6 @@ $(OUT)/treasuryDAO_storage.tz: src/**
 
 	# ============== Compilation successful ============== #
 	# See "$(OUT)/treasuryDAO_storage.tz" for compilation result #
-	#
-
-originate : storage = $(OUT)/trivialDAO_storage.tz
-originate : admin_address = tz1QozfhaUW4wLnohDo6yiBUmh7cPCSXE9Af
-originate : contract_name = baseDAO
-originate: $(OUT)/baseDAO.tz
-	# ============== Originating DAO with $(storage) ============== #
-	@$(ORIGINATE) --contract $(OUT)/baseDAO.tz --from "$(admin_address)" \
-								--initial-storage '$(call escape_quote,$(shell cat $(storage)))' \
-								 --contract-name "$(contract_name)"
-	# =================== Origination completed =================== #
-	#
-
-originate-steps : storage = $(OUT)/trivialDAO_storage.tz
-originate-steps : admin_address = tz1QozfhaUW4wLnohDo6yiBUmh7cPCSXE9Af
-originate-steps : destination = $(OUT)/steps
-originate-steps: $(OUT)/baseDAO.tz
-	# ============== Originating DAO steps with $(storage) ============== #
-	@$(ORIGINATE_STEPS) --contract $(OUT)/baseDAO.tz --from "$(admin_address)" \
-								--initial-storage '$(call escape_quote,$(shell cat $(storage)))' \
-								 --destination "$(destination)"
-	# ================== Steps saved in $(destination) ================== #
 	#
 
 test: all

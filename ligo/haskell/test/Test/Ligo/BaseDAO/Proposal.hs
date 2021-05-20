@@ -136,6 +136,8 @@ test_BaseDAO_Proposal =
       , nettestScenarioOnEmulatorCaps "cannot unfreeze tokens from the same period" $
           cannotUnfreezeFromSamePeriod (originateLigoDaoWithConfigDesc dynRecUnsafe)
 
+      , nettestScenarioOnEmulatorCaps "cannot unfreeze staked tokens" $
+          cannotUnfreezeStakedTokens (originateLigoDaoWithConfigDesc dynRecUnsafe)
 
       , nettestScenarioOnEmulatorCaps "can unfreeze tokens from the previous period" $
           canUnfreezeFromPreviousPeriod (originateLigoDaoWithConfigDesc dynRecUnsafe)
@@ -183,7 +185,7 @@ test_BaseDAO_Proposal =
     , nettestScenarioOnEmulatorCaps "a proposer is returned a fee after the proposal succeeds" $ do
           DaoOriginateData{..} <-
             originateLigoDaoWithConfigDesc dynRecUnsafe
-              (   (ConfigDesc $ VotingPeriod 60)
+              (   (ConfigDesc $ Period 60)
               >>- (ConfigDesc configConsts{ cmProposalFlushTime = Just 120 })
               >>- (ConfigDesc configConsts{ cmProposalExpiredTime = Just 180 })
               >>- (ConfigDesc (FixedFee 42))
@@ -227,7 +229,7 @@ test_BaseDAO_Proposal =
           DaoOriginateData{..} <-
             originateLigoDaoWithConfigDesc dynRecUnsafe
               ((  ConfigDesc $ mkQuorumThreshold 1 20)
-              >>- (ConfigDesc $ VotingPeriod 60)
+              >>- (ConfigDesc $ Period 60)
               >>- (ConfigDesc (FixedFee 42))
               >>- (ConfigDesc configConsts{ cmProposalExpiredTime = Just 1800 })
               )
@@ -273,7 +275,7 @@ test_BaseDAO_Proposal =
           DaoOriginateData{..} <-
             originateLigoDaoWithConfigDesc dynRecUnsafe
               ((  ConfigDesc $ mkQuorumThreshold 1 20)
-              >>- (ConfigDesc $ VotingPeriod 60)
+              >>- (ConfigDesc $ Period 60)
               >>- (ConfigDesc (FixedFee 42))
               >>- (ConfigDesc configConsts{ cmProposalExpiredTime = Just 1800 })
               )
@@ -340,7 +342,7 @@ nonProposalPeriodProposal originateFn = do
         }
 
   withSender dodOwner1 $ call dodDao (Call @"Propose") params
-    & expectCustomErrorNoArg #nOT_PROPOSING_PERIOD dodDao
+    & expectCustomErrorNoArg #nOT_PROPOSING_STAGE dodDao
 
 freezeTokens
   :: (MonadNettest caps base m, HasCallStack)
@@ -363,7 +365,7 @@ burnsFeeOnFailure
 burnsFeeOnFailure reason = do
   DaoOriginateData{..} <-
       originateLigoDaoWithConfigDesc dynRecUnsafe
-        (   (ConfigDesc $ VotingPeriod 60)
+        (   (ConfigDesc $ Period 60)
         >>- (ConfigDesc configConsts{ cmProposalFlushTime = Just 120 })
         >>- (ConfigDesc configConsts{ cmProposalExpiredTime = Just 180 })
         >>- (ConfigDesc $ FixedFee 42)
@@ -417,6 +419,28 @@ cannotUnfreezeFromSamePeriod originateFn = do
   -- Cannot unfreeze in the same period
   withSender dodOwner1 $ call dodDao (Call @"Unfreeze") (#amount .! 10)
     & expectCustomError_ #nOT_ENOUGH_FROZEN_TOKENS dodDao
+
+cannotUnfreezeStakedTokens
+  :: (MonadNettest caps base m, HasCallStack)
+  => (ConfigDesc Config -> OriginateFn m) -> m ()
+cannotUnfreezeStakedTokens originateFn = do
+  DaoOriginateData{..} <- originateFn testConfig
+
+  withSender dodOwner1 $ call dodDao (Call @"Freeze") (#amount .! 50)
+  checkTokenBalance frozenTokenId dodDao dodOwner1 150
+
+  -- Advance one voting period to a proposing stage.
+  advanceTime (sec 15)
+  void $ createSampleProposal 1 dodOwner1 dodDao
+
+  -- the frozen tokens are still the same
+  checkTokenBalance frozenTokenId dodDao dodOwner1 150
+  -- but unfreeze won't let all of them be unfrozen because of the staked tokens
+  -- note: 110 tokens are staked here
+  withSender dodOwner1 $ call dodDao (Call @"Unfreeze") (#amount .! 41)
+    & expectCustomError_ #nOT_ENOUGH_FROZEN_TOKENS dodDao
+  -- it will allow the un-staked ones to be unfrozen
+  withSender dodOwner1 $ call dodDao (Call @"Unfreeze") (#amount .! 40)
 
 canUnfreezeFromPreviousPeriod
   :: (MonadNettest caps base m, HasCallStack)
@@ -581,7 +605,7 @@ flushProposalFlushTimeNotReach
 flushProposalFlushTimeNotReach originateFn = do
   DaoOriginateData{..} <-
     originateFn (configWithRejectedProposal
-        >>- (ConfigDesc $ VotingPeriod 20)
+        >>- (ConfigDesc $ Period 20)
         >>- (ConfigDesc configConsts{ cmProposalFlushTime = Just 40 })
         >>- (ConfigDesc configConsts{ cmProposalExpiredTime = Just 60 })
         )
@@ -613,7 +637,7 @@ flushAcceptedProposals originateFn getTotalSupplyFn = do
 -- Use 60s for voting period, since in real network by the time we call
   -- vote entrypoint 30s is already passed.
   DaoOriginateData{..} <- originateFn (testConfig
-      >>- (ConfigDesc $ VotingPeriod 60)
+      >>- (ConfigDesc $ Period 60)
       >>- (ConfigDesc configConsts{ cmProposalFlushTime = Just 120 })
       >>- (ConfigDesc configConsts{ cmProposalExpiredTime = Just 180 })
       )
@@ -670,7 +694,7 @@ flushAcceptedProposalsWithAnAmount
 flushAcceptedProposalsWithAnAmount originateFn = do
   DaoOriginateData{..}
     <- originateFn (configWithRejectedProposal
-        >>- (ConfigDesc $ VotingPeriod 20)
+        >>- (ConfigDesc $ Period 20)
         >>- (ConfigDesc configConsts{ cmProposalFlushTime = Just 40 })
         >>- (ConfigDesc configConsts{ cmProposalExpiredTime = Just 60 })
         )
@@ -724,7 +748,7 @@ flushRejectProposalQuorum originateFn = do
   DaoOriginateData{..}
     <- originateFn (configWithRejectedProposal
         >>- (ConfigDesc (mkQuorumThreshold 3 5))
-        >>- (ConfigDesc $ VotingPeriod 20)
+        >>- (ConfigDesc $ Period 20)
         >>- (ConfigDesc configConsts{ cmProposalFlushTime = Just 40 })
         >>- (ConfigDesc configConsts{ cmProposalExpiredTime = Just 60 })
         )
@@ -770,7 +794,7 @@ flushRejectProposalNegativeVotes originateFn = do
   DaoOriginateData{..}
     <- originateFn (configWithRejectedProposal
           >>- (ConfigDesc (mkQuorumThreshold 3 100))
-          >>- (ConfigDesc (VotingPeriod 20))
+          >>- (ConfigDesc (Period 20))
           >>- (ConfigDesc configConsts{ cmProposalFlushTime = Just 40 })
           >>- (ConfigDesc configConsts{ cmProposalExpiredTime = Just 60 })
           >>- (ConfigDesc (mkQuorumThreshold 3 100))
@@ -830,7 +854,7 @@ flushWithBadConfig originateFn = do
   DaoOriginateData{..} <-
     originateFn (badRejectedValueConfig
       >>- (ConfigDesc (mkQuorumThreshold 1 2))
-      >>- (ConfigDesc (VotingPeriod 20))
+      >>- (ConfigDesc (Period 20))
       >>- (ConfigDesc configConsts{ cmProposalFlushTime = Just 40 })
       >>- (ConfigDesc configConsts{ cmProposalExpiredTime = Just 60 })
       >>- (ConfigDesc (mkQuorumThreshold 1 2))
@@ -873,7 +897,7 @@ flushDecisionLambda originateFn = do
   consumer <- originateSimple "consumer" [] (contractConsumer)
   DaoOriginateData{..} <-
     originateFn ((decisionLambdaConfig consumer)
-      >>- (ConfigDesc $ VotingPeriod 60)
+      >>- (ConfigDesc $ Period 60)
       >>- (ConfigDesc configConsts{ cmProposalFlushTime = Just 120 })
       >>- (ConfigDesc configConsts{ cmProposalExpiredTime = Just 180 })
       )
@@ -912,7 +936,7 @@ flushFailOnExpiredProposal originateFn = withFrozenCallStack $ do
     originateFn
      (configWithRejectedProposal
        >>- (ConfigDesc (mkQuorumThreshold 1 50))
-       >>- (ConfigDesc (VotingPeriod 20))
+       >>- (ConfigDesc (Period 20))
        >>- (ConfigDesc configConsts{ cmProposalFlushTime = Just 40 })
        >>- (ConfigDesc configConsts{ cmProposalExpiredTime = Just 60 })
       )
@@ -959,11 +983,11 @@ dropProposal originateFn = withFrozenCallStack $ do
   DaoOriginateData{..} <-
     originateFn
      (configWithRejectedProposal
-       >>- (ConfigDesc (VotingPeriod 20))
+       >>- (ConfigDesc (Period 20))
        >>- (ConfigDesc configConsts{ cmProposalFlushTime = Just 40 })
        >>- (ConfigDesc configConsts{ cmProposalExpiredTime = Just 60 })
        >>- (ConfigDesc (mkQuorumThreshold 1 50))
-       >>- (ConfigDesc (VotingPeriod 20))
+       >>- (ConfigDesc (Period 20))
       )
 
   withSender dodOwner1 $

@@ -23,7 +23,7 @@ module Test.Ligo.BaseDAO.Proposal.Config
   ) where
 
 import Lorentz
-import Universum (Constraint, (?:))
+import Universum (Constraint, (?:), fromIntegral)
 
 import qualified Ligo.BaseDAO.Types as DAO
 
@@ -83,14 +83,14 @@ data ConfigConstants = ConfigConstants
   { cmMaxProposals :: Maybe Natural
   , cmMaxVotes :: Maybe Natural
   , cmQuorumThreshold :: Maybe DAO.QuorumThreshold
-  , cmVotingPeriod :: Maybe DAO.VotingPeriod
+  , cmPeriod :: Maybe DAO.Period
   , cmProposalFlushTime :: Maybe Natural
   , cmProposalExpiredTime :: Maybe Natural
   }
 
 -- | Constructor for config descriptor that overrides config constants.
 --
--- Example: @configConsts{ cmMinVotingPeriod = 10 }@
+-- Example: @configConsts{ cmMaxVotes = 10 }@
 configConsts :: ConfigConstants
 configConsts = ConfigConstants Nothing Nothing Nothing Nothing Nothing Nothing
 
@@ -121,7 +121,7 @@ divideOnRejectionBy divisor = RejectedProposalReturnValue $ do
 
 doNonsenseOnRejection :: RejectedProposalReturnValue
 doNonsenseOnRejection = RejectedProposalReturnValue $ do
-  drop; push (9999 :: Natural)
+  drop; push (10 :: Natural)
   toNamed #slash_amount
 
 data DecisionLambdaAction =
@@ -192,13 +192,13 @@ instance IsConfigDescExt DAO.Config DAO.QuorumThreshold where
   fillConfig qt DAO.Config'{..} = DAO.Config'
     -- We set min quorum threshold since we use it to initialize
     -- the quorumThreshold in storage in tests.
-    { cMinQuorumThreshold = qt
+    { cMinQuorumThreshold = fromIntegral qt
     , ..
     }
 
-instance IsConfigDescExt DAO.Config DAO.VotingPeriod where
+instance IsConfigDescExt DAO.Config DAO.Period where
   fillConfig vp DAO.Config'{..} = DAO.Config'
-    { cVotingPeriod = vp
+    { cPeriod = vp
     , ..
     }
 
