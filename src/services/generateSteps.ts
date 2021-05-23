@@ -32,11 +32,15 @@ export const generateSteps = async (template: Template, storage: Storage, origin
     console.log(e)
   }
 
-  await runCommand(
-    `cd ${join(process.cwd(), "ligo")} && ls && make ${Object.keys(storage).map(
-      (key) => `${key}=${storage[key]}`
-    ).join(" ")} ${storagePathArgument}`
-  );
+  try {
+    await runCommand(
+      `cd ${join(process.cwd(), "ligo")} && ls && make ${Object.keys(storage).map(
+        (key) => `${key}=${storage[key]}`
+      ).join(" ")} ${storagePathArgument}`
+    );
+  } catch(e) {
+    console.log(e)
+  }
 
   // await runCommand(
   //   `cd ${join(process.cwd(), "ligo")} && make originate-steps storage=${storagePathArgument} \
