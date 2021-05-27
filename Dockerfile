@@ -18,16 +18,11 @@ RUN curl -sSL https://get.haskellstack.org/ | sh
 RUN wget https://ligolang.org/bin/linux/ligo
 RUN chmod +x ./ligo && cp ./ligo /usr/local/bin
 
-#ADD MORLEY TO PATH
-RUN cd app/ligo/morley/bin && \
-chmod +x ./morley && cp ./morley /usr/local/bin && \
-chmod +x ./morley-large-originator && cp ./morley-large-originator /usr/local/bin
-
 #GENERATE CONTRACTS
 RUN cd app/ligo && make all
 
 #RUN NODE API
-WORKDIR app
+WORKDIR /app
 RUN npm i
 EXPOSE 3500
 

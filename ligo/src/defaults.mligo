@@ -4,22 +4,38 @@
 #include "types.mligo"
 #include "proposal.mligo"
 
-let validate_default_config (data : initial_config_data) : unit =
+let validate_proposal_flush_expired_time (data : initial_config_data) : unit =
   if data.proposal_expired_time <= data.proposal_flush_time then
-    failwith("proposal_expired_time needs to be bigger than proposal_flush_time")
+    failwith("'proposal_expired_time' needs to be bigger than 'proposal_flush_time'.")
   else if data.proposal_flush_time <= (data.period.length * 2n) then
-    failwith("proposal_flush_time needs to be more than twice the period length")
+    failwith("'proposal_flush_time' needs to be more than twice the 'period' length.")
   else unit
 
+let validate_max_votes (data : initial_config_data) : unit =
+  if data.max_votes > data.governance_total_supply then
+    failwith("The 'max_votes' number cannot exceed the 'governance_total_supply'.")
+  // TODO #271: check for maximum reasonable value
+  else unit
+
+let validate_quorum_threshold_bound (data : initial_config_data) : unit =
+  if data.quorum_threshold >= data.max_quorum then
+    failwith("'quorum_threshold' needs to be smaller than or equal to 'max_quorum'")
+  else if data.quorum_threshold <= data.min_quorum then
+    failwith("'quorum_threshold' needs to be bigger than or equal to 'min_quorum'")
+  else
+    unit
+
 let default_config (data : initial_config_data) : config =
-  let _ : unit = validate_default_config(data) in {
+  let _ : unit = validate_proposal_flush_expired_time(data) in
+  let _ : unit = validate_max_votes(data) in
+  let _ : unit = validate_quorum_threshold_bound(data) in {
     proposal_check = (fun (_params, _extras : propose_params * contract_extra) -> true);
-    rejected_proposal_return_value = (fun (_proposal, _extras : proposal * contract_extra) -> 0n);
+    rejected_proposal_slash_value = (fun (_proposal, _extras : proposal * contract_extra) -> 0n);
     decision_lambda = (fun (_proposal, extras : proposal * contract_extra) -> (([] : (operation list)), extras));
     fixed_proposal_fee_in_token = data.fixed_proposal_fee_in_token;
     period = data.period;
     max_proposals = 500n;
-    max_votes = 1000n;
+    max_votes = data.max_votes;
     max_quorum_threshold = to_signed(data.max_quorum);
     min_quorum_threshold = to_signed(data.min_quorum);
     max_quorum_change = to_signed(data.max_quorum_change);

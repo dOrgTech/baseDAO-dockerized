@@ -264,8 +264,6 @@ type transfer_contract_tokens_param =
 type forbid_xtz_params =
   | Call_FA2 of fa2_parameter
   | Drop_proposal of proposal_key
-  | Transfer_ownership of transfer_ownership_param
-  | Accept_ownership of unit
   | Vote of vote_param_permited list
   | Flush of nat
   | Freeze of freeze_param
@@ -278,6 +276,8 @@ type allow_xtz_params =
   | CallCustom of custom_ep_param
   | Propose of propose_params
   | Transfer_contract_tokens of transfer_contract_tokens_param
+  | Transfer_ownership of transfer_ownership_param
+  | Accept_ownership of unit
 
 (*
  * Full parameter of the contract.
@@ -304,6 +304,7 @@ type initial_config_data =
   { max_quorum : quorum_threshold
   ; min_quorum : quorum_threshold
   ; quorum_threshold : quorum_threshold
+  ; max_votes : nat
   ; period : period
   ; proposal_flush_time: seconds
   ; proposal_expired_time: seconds
@@ -332,7 +333,7 @@ type config =
   // ^ A lambda used to verify whether a proposal can be submitted.
   // It checks 2 things: the proposal itself and the amount of tokens frozen upon submission.
   // It allows the DAO to reject a proposal by arbitrary logic and captures bond requirements
-  ; rejected_proposal_return_value : proposal * contract_extra -> nat
+  ; rejected_proposal_slash_value : proposal * contract_extra -> nat
   // ^ When a proposal is rejected, the value that voters get back can be slashed.
   // This lambda returns the amount to be slashed.
   ; decision_lambda : proposal * contract_extra -> operation list * contract_extra
