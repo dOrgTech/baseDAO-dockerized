@@ -5,7 +5,7 @@ cabal-version: 2.2
 -- see: https://github.com/sol/hpack
 
 name:           baseDAO-ligo-meta
-version:        0.3.0.0
+version:        0.3.1.0
 description:    Tools and tests for the LIGO baseDAO contract.
 author:         Serokell, Tocqueville Group
 maintainer:     Serokell, Tocqueville Group
@@ -37,13 +37,10 @@ library
   ghc-options: -Weverything -Wno-missing-exported-signatures -Wno-missing-import-lists -Wno-missed-specialisations -Wno-all-missed-specialisations -Wno-unsafe -Wno-safe -Wno-missing-local-signatures -Wno-monomorphism-restriction -Wno-implicit-prelude -Wno-unused-packages -Wno-prepositive-qualified-module -Wno-missing-safe-haskell-mode -Wno-unused-do-bind
   build-depends:
       base-noprelude >=4.7 && <5
-    , cleveland
     , containers
-    , data-default
     , directory
     , filepath
     , fmt
-    , lens
     , lorentz
     , morley
     , morley-client
@@ -81,25 +78,41 @@ test-suite baseDAO-test
   main-is: Main.hs
   other-modules:
       Ligo.BaseDAO.Contract
+      SMT.BaseDAO
+      SMT.Common.Gen
+      SMT.Common.Helper
+      SMT.Common.Run
+      SMT.Common.Types
+      SMT.Model.BaseDAO.Contract
+      SMT.Model.BaseDAO.Management
+      SMT.Model.BaseDAO.Permit
+      SMT.Model.BaseDAO.Proposal
+      SMT.Model.BaseDAO.Proposal.FreezeHistory
+      SMT.Model.BaseDAO.Proposal.QuorumThreshold
+      SMT.Model.BaseDAO.Token
+      SMT.Model.BaseDAO.Types
+      SMT.RegistryDAO
+      SMT.TreasuryDAO
       Test.Ligo.BaseDAO.Common
+      Test.Ligo.BaseDAO.Common.Errors
       Test.Ligo.BaseDAO.Common.StorageHelper
-      Test.Ligo.BaseDAO.FA2
-      Test.Ligo.BaseDAO.Integrational.Common
-      Test.Ligo.BaseDAO.Integrational.Proposal
       Test.Ligo.BaseDAO.Management
+      Test.Ligo.BaseDAO.Management.TransferOwnership
       Test.Ligo.BaseDAO.OffChainViews
       Test.Ligo.BaseDAO.Proposal
       Test.Ligo.BaseDAO.Proposal.Config
-      Test.Ligo.BaseDAO.Proposal.Proposal
+      Test.Ligo.BaseDAO.Proposal.Delegate
+      Test.Ligo.BaseDAO.Proposal.Flush
+      Test.Ligo.BaseDAO.Proposal.Propose
+      Test.Ligo.BaseDAO.Proposal.Quorum
+      Test.Ligo.BaseDAO.Proposal.Tokens
       Test.Ligo.BaseDAO.Proposal.Vote
       Test.Ligo.BaseDAO.Token
-      Test.Ligo.BaseDAO.Token.BalanceOf
-      Test.Ligo.BaseDAO.Token.Common
-      Test.Ligo.BaseDAO.Token.Transfer
-      Test.Ligo.BaseDAO.Token.UpdateOperators
       Test.Ligo.BaseDAO.Types
       Test.Ligo.RegistryDAO
+      Test.Ligo.RegistryDAO.Types
       Test.Ligo.TreasuryDAO
+      Test.Ligo.TreasuryDAO.Types
       Paths_baseDAO_ligo_meta
   hs-source-dirs:
       test
@@ -114,16 +127,18 @@ test-suite baseDAO-test
     , bytestring
     , cleveland
     , containers
+    , cryptonite
     , fmt
-    , lens
+    , hedgehog
     , lorentz
     , morley
     , morley-ledgers
     , morley-metadata
     , morley-prelude
+    , mtl
     , named
-    , o-clock
     , tasty
+    , tasty-hedgehog
     , tasty-hunit-compat
     , universum
   default-language: Haskell2010

@@ -12,20 +12,20 @@ module Test.Ligo.BaseDAO.Proposal.Config
   , ConfigConstants (..)
   , configConsts
   , ProposalFrozenTokensCheck (..)
-  , RejectedProposalReturnValue (..)
+  , RejectedProposalSlashValue (..)
   , DecisionLambdaAction (..)
 
   , testConfig
-  , configWithRejectedProposal
   , badRejectedValueConfig
   , decisionLambdaConfig
   , voteConfig
   ) where
 
 import Lorentz
-import Universum (Constraint, (?:), fromIntegral)
+import Universum (Constraint, fromIntegral, (?:))
 
 import qualified Ligo.BaseDAO.Types as DAO
+import Test.Ligo.BaseDAO.Common.Errors (tooSmallXtzErrMsg)
 
 -- | Configuration descriptor.
 --
@@ -81,7 +81,7 @@ ConfigDesc a >>- ConfigDesc b = ConfigDesc (ConfigDescChain a b)
 
 data ConfigConstants = ConfigConstants
   { cmMaxProposals :: Maybe Natural
-  , cmMaxVotes :: Maybe Natural
+  , cmMaxVoters :: Maybe Natural
   , cmQuorumThreshold :: Maybe DAO.QuorumThreshold
   , cmPeriod :: Maybe DAO.Period
   , cmProposalFlushTime :: Maybe Natural
@@ -95,22 +95,23 @@ configConsts :: ConfigConstants
 configConsts = ConfigConstants Nothing Nothing Nothing Nothing Nothing Nothing
 
 data ProposalFrozenTokensCheck =
-  ProposalFrozenTokensCheck (Lambda ("ppFrozenToken" :! Natural) Bool)
+  ProposalFrozenTokensCheck (Lambda ("ppFrozenToken" :! Natural) ())
 
-data RejectedProposalReturnValue =
-  RejectedProposalReturnValue (Lambda ("proposerFrozenToken" :! Natural) ("slash_amount" :! Natural))
+data RejectedProposalSlashValue =
+  RejectedProposalSlashValue (Lambda ("proposerFrozenToken" :! Natural) ("slash_amount" :! Natural))
 
 proposalFrozenTokensMinBound :: Natural -> ProposalFrozenTokensCheck
 proposalFrozenTokensMinBound minTokens = ProposalFrozenTokensCheck $ do
   push minTokens
   toNamed #requireValue
   if #requireValue <=. #ppFrozenToken then
-    push True
-  else
-    push False
+    push ()
+  else do
+    push tooSmallXtzErrMsg
+    failCustom #fAIL_PROPOSAL_CHECK
 
-divideOnRejectionBy :: Natural -> RejectedProposalReturnValue
-divideOnRejectionBy divisor = RejectedProposalReturnValue $ do
+divideOnRejectionBy :: Natural -> RejectedProposalSlashValue
+divideOnRejectionBy divisor = RejectedProposalSlashValue $ do
   fromNamed #proposerFrozenToken
   push divisor
   swap
@@ -119,8 +120,8 @@ divideOnRejectionBy divisor = RejectedProposalReturnValue $ do
     push (0 :: Natural)
   toNamed #slash_amount
 
-doNonsenseOnRejection :: RejectedProposalReturnValue
-doNonsenseOnRejection = RejectedProposalReturnValue $ do
+doNonsenseOnRejection :: RejectedProposalSlashValue
+doNonsenseOnRejection = RejectedProposalSlashValue $ do
   drop; push (10 :: Natural)
   toNamed #slash_amount
 
@@ -144,9 +145,10 @@ passProposerOnDecision target = DecisionLambdaAction $ do
 ------------------------------------------------------------------------
 
 testConfig
-  :: AreConfigDescsExt config [ConfigConstants, ProposalFrozenTokensCheck]
+  :: AreConfigDescsExt config [ConfigConstants, ProposalFrozenTokensCheck, RejectedProposalSlashValue]
   => ConfigDesc config
 testConfig =
+  ConfigDesc (divideOnRejectionBy 2) >>-
   ConfigDesc (proposalFrozenTokensMinBound 10) >>-
   ConfigDesc configConsts
     { cmQuorumThreshold = Just (DAO.mkQuorumThreshold 1 100) }
@@ -161,14 +163,8 @@ voteConfig = ConfigDesc $
   ConfigDesc configConsts
     { cmQuorumThreshold = Just (DAO.mkQuorumThreshold 4 100) }
 
-configWithRejectedProposal
-  :: AreConfigDescsExt config '[RejectedProposalReturnValue]
-  => ConfigDesc config
-configWithRejectedProposal =
-  ConfigDesc (divideOnRejectionBy 2)
-
 badRejectedValueConfig
-  :: AreConfigDescsExt config '[RejectedProposalReturnValue]
+  :: AreConfigDescsExt config '[RejectedProposalSlashValue]
   => ConfigDesc config
 badRejectedValueConfig = ConfigDesc doNonsenseOnRejection
 
@@ -182,17 +178,9 @@ decisionLambdaConfig target = ConfigDesc $ passProposerOnDecision target
 instance IsConfigDescExt DAO.Config ConfigConstants where
   fillConfig ConfigConstants{..} DAO.Config'{..} = DAO.Config'
     { cMaxProposals = cmMaxProposals ?: cMaxProposals
-    , cMaxVotes = cmMaxVotes ?: cMaxVotes
-    , cProposalFlushTime = cmProposalFlushTime ?: cProposalFlushTime
-    , cProposalExpiredTime = cmProposalExpiredTime ?: cProposalExpiredTime
-    , ..
-    }
-
-instance IsConfigDescExt DAO.Config DAO.QuorumThreshold where
-  fillConfig qt DAO.Config'{..} = DAO.Config'
-    -- We set min quorum threshold since we use it to initialize
-    -- the quorumThreshold in storage in tests.
-    { cMinQuorumThreshold = fromIntegral qt
+    , cMaxVoters = cmMaxVoters ?: cMaxVoters
+    , cProposalFlushLevel = cmProposalFlushTime ?: cProposalFlushLevel
+    , cProposalExpiredLevel = cmProposalExpiredTime ?: cProposalExpiredLevel
     , ..
     }
 
@@ -217,13 +205,13 @@ instance IsConfigDescExt DAO.Config ProposalFrozenTokensCheck where
     , ..
     }
 
-instance IsConfigDescExt DAO.Config RejectedProposalReturnValue where
-  fillConfig (RejectedProposalReturnValue toReturnValue) DAO.Config'{..} =
+instance IsConfigDescExt DAO.Config RejectedProposalSlashValue where
+  fillConfig (RejectedProposalSlashValue toSlashValue) DAO.Config'{..} =
     DAO.Config'
-    { cRejectedProposalReturnValue = do
+    { cRejectedProposalSlashValue = do
         dip drop
         toField #plProposerFrozenToken; toNamed #proposerFrozenToken
-        framed toReturnValue
+        framed toSlashValue
     , ..
     }
 
@@ -231,8 +219,35 @@ instance IsConfigDescExt DAO.Config DecisionLambdaAction where
   fillConfig (DecisionLambdaAction lam) DAO.Config'{..} =
     DAO.Config'
     { cDecisionLambda = do
+        getField #diProposal
         getField #plProposerFrozenToken; toNamed #frozen_tokens
-        dip $ do toField #plProposer; toNamed #proposer
+        dip $ do toField #plProposer; toNamed #proposer;
+        dip (dip $ do toField #diExtra)
         framed lam
+        swap
+        dip (push Nothing)
+        constructStack @(DAO.DecisionLambdaOutput BigMap)
+
+    , ..
+    }
+
+instance IsConfigDescExt DAO.Config ("changePercent" :! Natural) where
+  fillConfig (arg #changePercent -> cp) DAO.Config'{..} =
+    DAO.Config'
+    { cQuorumChange = DAO.QuorumFraction $ fromIntegral $ DAO.percentageToFractionNumerator cp
+    , ..
+    }
+
+instance IsConfigDescExt DAO.Config ("maxChangePercent" :! Natural) where
+  fillConfig (arg #maxChangePercent -> cp) DAO.Config'{..} =
+    DAO.Config'
+    { cMaxQuorumChange = DAO.QuorumFraction $ fromIntegral $ DAO.percentageToFractionNumerator cp
+    , ..
+    }
+
+instance IsConfigDescExt DAO.Config ("governanceTotalSupply" :! Natural) where
+  fillConfig (arg #governanceTotalSupply -> ts) DAO.Config'{..} =
+    DAO.Config'
+    { cGovernanceTotalSupply = DAO.GovernanceTotalSupply ts
     , ..
     }

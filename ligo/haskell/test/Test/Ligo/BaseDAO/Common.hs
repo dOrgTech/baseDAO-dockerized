@@ -1,55 +1,52 @@
 -- SPDX-FileCopyrightText: 2021 TQ Tezos
 -- SPDX-License-Identifier: LicenseRef-MIT-TQ
+{-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE NumericUnderscores #-}
-
--- TODO: Replace 'Empty' with 'Never' from morley
-{-# OPTIONS_GHC -Wno-deprecations #-}
 
 module Test.Ligo.BaseDAO.Common
   ( DaoOriginateData(..)
   , OriginateFn
-  , totalSupplyFromLedger
 
-  , frozenTokens
-  , unfrozenTokens
-  , unfrozenTokens1
-  , unknownTokens
-
-  , mkFA2View
-  , checkTokenBalance
   , dummyFA2Contract
+  , dummyGuardianContract
   , makeProposalKey
   , addDataToSign
   , permitProtect
   , sendXtz
+  , sendXtzWithAmount
 
   , createSampleProposal
-  , originateLigoDaoWithBalance
+  , createSampleProposals
+  , defaultQuorumThreshold
+  , originateLigoDaoWithConfig
   , originateLigoDaoWithConfigDesc
   , originateLigoDao
 
+  -- * Helper
+  , metadataSize
+
   -- * Re-export
+  , module Errors
   , module StorageHelper
   ) where
 
 import Universum hiding (drop, swap)
 
+import qualified Data.ByteString as BS
 import Lorentz hiding (now, (>>))
 import qualified Lorentz.Contracts.Spec.FA2Interface as FA2
-import Lorentz.Test (contractConsumer)
 import Michelson.Typed.Convert (convertContract, untypeValue)
 import Morley.Nettest
+import Morley.Nettest.Caps (MonadOps)
 import Named ((!))
-import Util.Named
 
-import qualified Data.Map as M
-import qualified Data.Set as S
 import Ligo.BaseDAO.Contract
 import Ligo.BaseDAO.Types
+import Test.Ligo.BaseDAO.Common.Errors as Errors
 import Test.Ligo.BaseDAO.Common.StorageHelper as StorageHelper
 import Test.Ligo.BaseDAO.Proposal.Config (ConfigDesc, fillConfig)
 
-type OriginateFn m = m DaoOriginateData
+type OriginateFn m = QuorumThreshold -> m DaoOriginateData
 
 data DaoOriginateData = DaoOriginateData
   { dodOwner1 :: Address
@@ -60,6 +57,7 @@ data DaoOriginateData = DaoOriginateData
   , dodTokenContract :: TAddress FA2.Parameter
   , dodAdmin :: Address
   , dodGuardian :: TAddress (Address, ProposalKey)
+  , dodPeriod :: Natural
   }
 
 -- | A dummy contract with FA2 parameter that remembers the
@@ -87,54 +85,8 @@ dummyGuardianContract = defaultContract $
   stackType @'[[Operation], ()] #
   pair
 
-totalSupplyFromLedger :: Ledger -> TotalSupply
-totalSupplyFromLedger (BigMap ledger) =
-  M.foldrWithKey (\(_, tokenId) val totalSup ->
-      M.alter (\v -> Just (fromMaybe 0 v + val)) tokenId totalSup
-    )
-    (M.fromList [(frozenTokenId, 0)])
-    ledger
-
-frozenTokens :: FA2.TokenId
-frozenTokens = frozenTokenId
-
-unfrozenTokens :: FA2.TokenId
-unfrozenTokens = FA2.TokenId 42
-
-unfrozenTokens1 :: FA2.TokenId
-unfrozenTokens1 = FA2.TokenId 420
-
-unknownTokens :: FA2.TokenId
-unknownTokens = FA2.TokenId 2
-
--- | Create FA2 View
-mkFA2View
-  :: forall paramFa a r contract. ToContractRef r contract
-  => a
-  -> contract
-  -> FA2.FA2View paramFa a r
-mkFA2View a c = FA2.FA2View (mkView a c)
-
--- | Helper function to check a user balance of a particular token
-checkTokenBalance
-  :: (MonadNettest caps base m, HasCallStack)
-  => FA2.TokenId -> TAddress Parameter
-  -> Address -> Natural
-  -> m ()
-checkTokenBalance tokenId dodDao addr expectedValue = withFrozenCallStack $ do
-  consumer <- originateSimple "consumer" [] contractConsumer
-
-  withSender addr $ call dodDao (Call @"Balance_of")
-    (mkFA2View [ FA2.BalanceRequestItem
-      { briOwner = addr
-      , briTokenId = tokenId
-      } ] consumer)
-
-  checkStorage (toAddress consumer)
-    (toVal [[((addr, tokenId), expectedValue)]] )
-
-makeProposalKey :: ProposeParams -> Address -> ProposalKey
-makeProposalKey params owner = toHashHs $ lPackValue (params, owner)
+makeProposalKey :: ProposeParams -> ProposalKey
+makeProposalKey params = toHashHs $ lPackValue params
 
 addDataToSign
   :: (MonadNettest caps base m)
@@ -160,11 +112,23 @@ permitProtect author (toSign, a) = do
 
 sendXtz
   :: (MonadNettest caps base m, HasCallStack, NiceParameter pm)
-  => Address -> EpName -> pm -> m ()
+  => TAddress cp -> EpName -> pm -> m ()
 sendXtz addr epName pm = withFrozenCallStack $ do
   let transferData = TransferData
-        { tdTo = addr
+        { tdTo = toAddress addr
         , tdAmount = toMutez 0.5_e6 -- 0.5 xtz
+        , tdEntrypoint = epName
+        , tdParameter = pm
+        }
+  transfer transferData
+
+sendXtzWithAmount
+  :: (MonadNettest caps base m, HasCallStack, NiceParameter pm)
+  => Mutez -> TAddress cp -> EpName -> pm -> m ()
+sendXtzWithAmount amt addr epName pm = withFrozenCallStack $ do
+  let transferData = TransferData
+        { tdTo = toAddress addr
+        , tdAmount = amt
         , tdEntrypoint = epName
         , tdParameter = pm
         }
@@ -186,13 +150,15 @@ sendXtz addr epName pm = withFrozenCallStack $ do
 -- checkPropertyOfProposal :: _
 -- checkPropertyOfProposal = error "undefined"
 
-originateLigoDaoWithBalance
+defaultQuorumThreshold :: QuorumThreshold
+defaultQuorumThreshold = mkQuorumThreshold 1 100
+
+originateLigoDaoWithConfig
  :: MonadNettest caps base m
  => ContractExtra
  -> Config
- -> (Address -> Address -> [(LedgerKey, LedgerValue)])
  -> OriginateFn m
-originateLigoDaoWithBalance extra config balFunc = do
+originateLigoDaoWithConfig extra config qt = do
   owner1 :: Address <- newAddress "owner1"
   operator1 :: Address <- newAddress "operator1"
   owner2 :: Address <- newAddress "owner2"
@@ -200,13 +166,7 @@ originateLigoDaoWithBalance extra config balFunc = do
 
   admin :: Address <- newAddress "admin"
 
-  let bal = BigMap $ M.fromList $ balFunc owner1 owner2
-  let operators = BigMap $ M.fromSet (const ()) $ S.fromList
-        [ (#owner .! owner1, #operator .! operator1, #token_id .! unfrozenTokens)
-        , (#owner .! owner2, #operator .! operator2, #token_id .! unfrozenTokens)
-        ]
-
-  now <- getNow
+  currentLevel <- getLevel
   tokenContract <- originateSimple "TokenContract" [] dummyFA2Contract
   guardianContract <- originateSimple "guardian" () dummyGuardianContract
 
@@ -217,13 +177,10 @@ originateLigoDaoWithBalance extra config balFunc = do
               ! #admin admin
               ! #metadata mempty
               ! #tokenAddress (unTAddress tokenContract)
-              ! #now now
-              ! #quorumThreshold (fromIntegral $ cMinQuorumThreshold config)
+              ! #level currentLevel
+              ! #quorumThreshold qt
             )
-            { sLedger = bal
-            , sOperators = operators
-            , sTotalSupply = totalSupplyFromLedger bal
-            , sGuardian = unTAddress guardianContract
+            { sGuardian = unTAddress guardianContract
             }
         , fsConfig = config
         }
@@ -239,19 +196,8 @@ originateLigoDaoWithBalance extra config balFunc = do
 
   let dao = TAddress @Parameter daoUntyped
 
-  pure $ DaoOriginateData owner1 operator1 owner2 operator2 dao tokenContract admin guardianContract
-
-originateLigoDaoWithConfig
- :: MonadNettest caps base m
- => ContractExtra
- -> Config
- -> OriginateFn m
-originateLigoDaoWithConfig extra config =
-  originateLigoDaoWithBalance extra config
-    (\owner1_ owner2_ ->
-    [ ((owner1_, frozenTokenId), 100)
-    , ((owner2_, frozenTokenId), 100)
-    ])
+  pure $ DaoOriginateData owner1 operator1 owner2 operator2 dao tokenContract
+      admin guardianContract (unPeriod $ cPeriod config)
 
 originateLigoDaoWithConfigDesc
  :: MonadNettest caps base m
@@ -259,11 +205,7 @@ originateLigoDaoWithConfigDesc
  -> ConfigDesc Config
  -> OriginateFn m
 originateLigoDaoWithConfigDesc extra config =
-  originateLigoDaoWithBalance extra (fillConfig config defaultConfig)
-    (\owner1_ owner2_ ->
-    [ ((owner1_, frozenTokenId), 100)
-    , ((owner2_, frozenTokenId), 100)
-    ])
+  originateLigoDaoWithConfig extra (fillConfig config defaultConfig)
 
 originateLigoDao :: MonadNettest caps base m => OriginateFn m
 originateLigoDao =
@@ -272,11 +214,34 @@ originateLigoDao =
 createSampleProposal
   :: (MonadNettest caps base m, HasCallStack)
   => Int -> Address -> TAddress Parameter -> m ProposalKey
-createSampleProposal counter dodOwner1 dao = do
+createSampleProposal counter dodOwner dao = do
+  let (pk, action) = createSampleProposal_ counter dodOwner dao
+  withSender dodOwner action
+  pure pk
+
+createSampleProposal_
+  :: (MonadOps m, HasCallStack)
+  => Int -> Address -> TAddress Parameter -> (ProposalKey, m ())
+createSampleProposal_ counter dodOwner1 dao =
   let params = ProposeParams
-        { ppFrozenToken = 10
+        { ppFrom = dodOwner1
+        , ppFrozenToken = 10
         , ppProposalMetadata = lPackValueRaw @Integer $ fromIntegral counter
         }
+  in (makeProposalKey params, call dao (Call @"Propose") params)
 
-  withSender dodOwner1 $ call dao (Call @"Propose") params
-  pure $ (makeProposalKey params dodOwner1)
+-- TODO consider making this polymorphic on the input/output size
+createSampleProposals
+  :: (MonadNettest caps base m, HasCallStack)
+  => (Int, Int) -> Address -> TAddress Parameter -> m (ProposalKey, ProposalKey)
+createSampleProposals (counter1, counter2) dodOwner1 dao = do
+  let (pk1, action1) = createSampleProposal_ counter1 dodOwner1 dao
+  let (pk2, action2) = createSampleProposal_ counter2 dodOwner1 dao
+  withSender dodOwner1 . inBatch $ do
+    action1
+    action2
+    return ()
+  pure (pk1, pk2)
+
+metadataSize :: ByteString -> Natural
+metadataSize md = fromIntegral $ BS.length md

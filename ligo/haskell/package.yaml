@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: LicenseRef-MIT-TQ
 
 name:                baseDAO-ligo-meta
-version:             0.3.0.0
+version:             0.3.1.0
 license:             MIT
 license-file:        LICENSE
 author:              Serokell, Tocqueville Group
@@ -92,14 +92,11 @@ library:
   generated-other-modules:
     - Paths_baseDAO_ligo_meta
   dependencies:
-    - cleveland
     - containers
-    - data-default
     - directory
     - filepath
     - text
     - fmt
-    - lens
     - lorentz
     - morley
     - morley-client
@@ -141,15 +138,17 @@ tests:
     - bytestring
     - cleveland
     - containers
+    - cryptonite
     - fmt
-    - lens
+    - hedgehog
     - lorentz
     - morley
     - morley-ledgers
     - morley-metadata
     - morley-prelude
+    - mtl
     - named
-    - o-clock
     - tasty
+    - tasty-hedgehog
     - tasty-hunit-compat
     - universum

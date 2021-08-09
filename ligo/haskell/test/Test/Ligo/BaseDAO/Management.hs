@@ -4,6 +4,7 @@
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 -- For all the incomplete list pattern matches in the calls to the
 -- `withOriginated` function
+
 module Test.Ligo.BaseDAO.Management
   ( test_BaseDAO_Management
   ) where
@@ -17,14 +18,12 @@ import Lorentz as L hiding (now, (>>))
 import Michelson.Runtime.GState (genesisAddress)
 import Michelson.Typed (convertContract)
 import Michelson.Typed.Convert (untypeValue)
-import Michelson.Untyped.Entrypoints (unsafeBuildEpName)
 import Morley.Nettest
 import Morley.Nettest.Tasty (nettestScenarioCaps)
-import Tezos.Core (unsafeMkMutez)
-import Util.Named
 
 import Ligo.BaseDAO.Contract
 import Ligo.BaseDAO.Types
+import Test.Ligo.BaseDAO.Management.TransferOwnership
 
 -- | Function that originates the contract and also make a bunch of
 -- address (the `addrCount` arg determines the count) for use within
@@ -51,57 +50,46 @@ withOriginated addrCount storageFn tests = do
 test_BaseDAO_Management :: [TestTree]
 test_BaseDAO_Management =
   [ testGroup "Ownership transfer"
-    [ nettestScenarioCaps "Contract forbids XTZ transfer" $ do
-        now <- getNow
-        withOriginated 2 (\(owner:_) -> initialStorage now owner) $ \[owner, wallet1] baseDao ->
-          withSender owner $ transfer TransferData
-            { tdTo = unTAddress baseDao
-            , tdAmount = unsafeMkMutez 1
-            , tdEntrypoint = unsafeBuildEpName "transfer_ownership"
-            , tdParameter = (#newOwner .! wallet1)
-            }
-          & expectForbiddenXTZ baseDao
-
-    , nettestScenarioCaps "transfer ownership entrypoint authenticates sender" $ do
-        now <- getNow
-        transferOwnership withOriginated (initialStorage now)
+    [ nettestScenarioCaps "transfer ownership entrypoint authenticates sender" $ do
+        current_level <- getLevel
+        transferOwnership withOriginated (initialStorage current_level)
 
     , nettestScenarioCaps "sets pending owner" $ do
-        now <- getNow
-        transferOwnership withOriginated (initialStorage now)
+        current_level <- getLevel
+        transferOwnership withOriginated (initialStorage current_level)
 
     , nettestScenarioCaps "does not set administrator" $ do
-        now <- getNow
-        notSetAdmin withOriginated (initialStorage now)
+        current_level <- getLevel
+        notSetAdmin withOriginated (initialStorage current_level)
 
     , nettestScenarioCaps "rewrite existing pending owner" $ do
-        now <- getNow
-        rewritePendingOwner withOriginated (initialStorage now)
+        current_level <- getLevel
+        rewritePendingOwner withOriginated (initialStorage current_level)
 
     , nettestScenarioCaps "invalidates pending owner if new owner is current admin" $ do
-        now <- getNow
-        invalidatePendingOwner withOriginated (initialStorage now)
+        current_level <- getLevel
+        invalidatePendingOwner withOriginated (initialStorage current_level)
 
     , nettestScenarioCaps "bypasses accept_entrypoint if new admin address is self" $ do
-        now <- getNow
-        bypassAcceptForSelf withOriginated (initialStorage now)
+        current_level <- getLevel
+        bypassAcceptForSelf withOriginated (initialStorage current_level)
     ]
     , testGroup "Accept Ownership"
       [ nettestScenarioCaps "authenticates the sender" $ do
-          now <- getNow
-          authenticateSender withOriginated (initialStorage now)
+          current_level <- getLevel
+          authenticateSender withOriginated (initialStorage current_level)
 
       , nettestScenarioCaps "changes the administrator to pending owner" $ do
-          now <- getNow
-          changeToPendingAdmin withOriginated (initialStorage now)
+          current_level <- getLevel
+          changeToPendingAdmin withOriginated (initialStorage current_level)
 
       , nettestScenarioCaps "throws error when there is no pending owner" $ do
-          now <- getNow
-          noPendingAdmin withOriginated (initialStorage now)
+          current_level <- getLevel
+          noPendingAdmin withOriginated (initialStorage current_level)
 
       , nettestScenarioCaps "throws error when called by current admin, when pending owner is not the same" $ do
-          now <- getNow
-          pendingOwnerNotTheSame withOriginated (initialStorage now)
+          current_level <- getLevel
+          pendingOwnerNotTheSame withOriginated (initialStorage current_level)
       ]
   ]
 
@@ -116,151 +104,13 @@ test_BaseDAO_Management =
         (L.dip (L.toField #fsStorage) # setField #sAdmin) #
       L.nil # pair
 
-    initialStorage now admin = mkFullStorage
+    initialStorage currentLevel admin = mkFullStorage
       ! #admin admin
       ! #extra dynRecUnsafe
       ! #metadata mempty
-      ! #now now
+      ! #level currentLevel
       ! #tokenAddress genesisAddress
       ! #customEps
           [ ([mt|testCustomEp|], lPackValueRaw testCustomEntrypoint)
           ]
       ! defaults
-
-type WithOriginateFn m = Integer
-  -> ([Address] -> FullStorage)
-  -> ([Address] -> TAddress Parameter  -> m ())
-  -> m ()
-
-type WithStorage = Address -> FullStorage
-
-transferOwnership
-  :: MonadNettest caps base m
-  => WithOriginateFn m -> WithStorage -> m ()
-transferOwnership withOriginatedFn initialStorage =
-  withOriginatedFn 2 (\(owner:_) -> initialStorage owner) $ \[_, wallet1] baseDao ->
-    withSender wallet1 $ call baseDao (Call @"Transfer_ownership") (#newOwner .! wallet1)
-      & expectNotAdmin baseDao
-
-authenticateSender
-  :: MonadNettest caps base m
-  => WithOriginateFn m -> WithStorage -> m ()
-authenticateSender withOriginatedFn initialStorage =
-  withOriginatedFn 3 (\(owner:_) -> initialStorage owner) $
-    \[owner, wallet1, wallet2] baseDao -> do
-      withSender owner $ call baseDao (Call @"Transfer_ownership")
-        (#newOwner .! wallet1)
-      withSender wallet2 $ call baseDao (Call @"Accept_ownership") ()
-        & expectNotPendingOwner baseDao
-
-changeToPendingAdmin
-  :: MonadNettest caps base m
-  => WithOriginateFn m -> WithStorage -> m ()
-changeToPendingAdmin withOriginatedFn initialStorage =
-  withOriginatedFn 2 (\(owner:_) -> initialStorage owner) $
-    \[owner, wallet1] baseDao -> do
-      withSender owner $ call baseDao (Call @"Transfer_ownership")
-        (#newOwner .! wallet1)
-      withSender wallet1 $ call baseDao (Call @"Accept_ownership") ()
-
-noPendingAdmin
-  :: MonadNettest caps base m
-  => WithOriginateFn m -> WithStorage -> m ()
-noPendingAdmin withOriginatedFn initialStorage =
-  withOriginatedFn 2 (\(owner:_) -> initialStorage owner) $
-    \[_, wallet1] baseDao -> do
-      withSender wallet1 $
-        call baseDao (Call @"Accept_ownership") ()
-        & expectNotPendingOwner baseDao
-
-pendingOwnerNotTheSame
-  :: MonadNettest caps base m
-  => WithOriginateFn m -> WithStorage -> m ()
-pendingOwnerNotTheSame withOriginatedFn initialStorage =
-  withOriginatedFn 2 (\(owner:_) -> initialStorage owner) $
-    \[owner, wallet1] baseDao -> withSender owner $ do
-      call baseDao (Call @"Transfer_ownership")
-        (#newOwner .! wallet1)
-      call baseDao (Call @"Accept_ownership") ()
-      & expectNotPendingOwner baseDao
-
-notSetAdmin
-  :: MonadNettest caps base m
-  => WithOriginateFn m -> WithStorage -> m ()
-notSetAdmin withOriginatedFn initialStorage =
-  withOriginatedFn 2 (\(owner:_) -> initialStorage owner) $
-    \[owner, wallet1] baseDao -> do
-      withSender owner $ do
-        call baseDao (Call @"Transfer_ownership")
-          (#newOwner .! wallet1)
-        -- Make the call once again to make sure the admin still retains admin
-        -- privileges
-        call baseDao (Call @"Transfer_ownership")
-          (#newOwner .! wallet1)
-
-rewritePendingOwner
-  :: MonadNettest caps base m
-  => WithOriginateFn m -> WithStorage -> m ()
-rewritePendingOwner withOriginatedFn initialStorage =
-  withOriginatedFn 3 (\(owner:_) -> initialStorage owner) $
-    \[owner, wallet1, wallet2] baseDao -> do
-      withSender owner $ do
-        call baseDao (Call @"Transfer_ownership")
-          (#newOwner .! wallet1)
-        call baseDao (Call @"Transfer_ownership")
-          (#newOwner .! wallet2)
-      -- Make the accept ownership call from wallet1 and see that it fails
-      withSender wallet1 $ call baseDao (Call @"Accept_ownership") ()
-        & expectNotPendingOwner baseDao
-      -- Make the accept ownership call from wallet1 and see that it works
-      withSender wallet2 $ call baseDao (Call @"Accept_ownership") ()
-
-invalidatePendingOwner
-  :: MonadNettest caps base m
-  => WithOriginateFn m -> WithStorage -> m ()
-invalidatePendingOwner withOriginatedFn initialStorage =
-  withOriginatedFn 2 (\(owner:_) -> initialStorage owner) $
-    \[owner, wallet1] baseDao -> do
-      withSender owner $ do
-        call baseDao (Call @"Transfer_ownership")
-          (#newOwner .! wallet1)
-        call baseDao (Call @"Transfer_ownership")
-          (#newOwner .! owner)
-      -- Make the accept ownership call from wallet1 and see that it fails
-      -- with 'not pending owner' error
-      withSender wallet1 $ call baseDao (Call @"Accept_ownership") ()
-        & expectNotPendingOwner baseDao
-
-bypassAcceptForSelf
-  :: MonadNettest caps base m
-  => WithOriginateFn m -> WithStorage -> m ()
-bypassAcceptForSelf withOriginatedFn initialStorage =
-  withOriginatedFn 2 (\(owner:_) -> initialStorage owner) $
-    \[owner, wallet1] baseDao -> do
-      withSender owner $ do
-        call baseDao (Call @"Transfer_ownership")
-          (#newOwner .! (unTAddress baseDao))
-      -- Same call should return error, because admin has been changed
-      withSender owner $ do
-        call baseDao (Call @"Transfer_ownership")
-          (#newOwner .! (unTAddress baseDao))
-        & expectNotAdmin baseDao
-      -- But this should work
-      withSender (unTAddress baseDao) $ do
-        call baseDao (Call @"Transfer_ownership")
-          (#newOwner .! wallet1)
-
-expectNotAdmin
-  :: (MonadNettest caps base m, ToAddress addr)
-  => addr -> m a -> m ()
-expectNotAdmin = expectCustomErrorNoArg #nOT_ADMIN
-
-expectNotPendingOwner
-  :: (MonadNettest caps base m, ToAddress addr)
-  => addr -> m a -> m ()
-expectNotPendingOwner = expectCustomErrorNoArg #nOT_PENDING_ADMIN
-
-expectForbiddenXTZ
-  :: (MonadNettest caps base m, ToAddress addr)
-  => addr -> m a -> m ()
-expectForbiddenXTZ = expectCustomErrorNoArg #fORBIDDEN_XTZ

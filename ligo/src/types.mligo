@@ -3,27 +3,11 @@
 
 // Corresponds to Types.hs module
 
-// -- FA2 types -- //
-
 #if !TYPES_H
 #define TYPES_H
 
 // ID of an FA2 token
 type token_id = nat
-
-// FA2 token operator
-type operator =
-  [@layout:comb]
-  { owner : address
-  ; operator : address
-  ; token_id : token_id
-  }
-type operators = (operator, unit) big_map
-
-// Types for FA2 tokens' ledger
-type ledger_key = address * token_id
-type ledger_value = nat
-type ledger = (ledger_key, ledger_value) big_map
 
 // Frozen token history for an address.
 // This track the stage number in which it was last updated and differentiates between
@@ -40,8 +24,7 @@ type address_freeze_history =
 // Frozen token history for all addresses
 type freeze_history = (address, address_freeze_history) big_map
 
-// Total supply of all FA2 tokens
-type total_supply = (token_id, nat) map
+type freeze_history_list = (address * nat) list
 
 // FA2 transfer types
 type transfer_destination =
@@ -56,43 +39,6 @@ type transfer_item =
   ; txs : transfer_destination list
   }
 type transfer_params = transfer_item list
-
-// FA2 balance entrypoint types
-type balance_request_item =
-  [@layout:comb]
-  { owner : address
-  ; token_id : token_id
-  }
-type balance_response_item =
-  [@layout:comb]
-  { request : balance_request_item
-  ; balance : nat
-  }
-type balance_request_params =
-  [@layout:comb]
-  { requests : balance_request_item list
-  ; callback : balance_response_item list contract
-  }
-
-// FA2 operator entrypoints types
-type operator_param =
-  [@layout:comb]
-  { owner : address
-  ; operator : address
-  ; token_id : token_id
-  }
-type update_operator =
-  [@layout:comb]
-  | Add_operator of operator_param
-  | Remove_operator of operator_param
-type update_operators_param = update_operator list
-
-// Full FA2 compliance parameter
-type fa2_parameter =
-  [@layout:comb]
-    Transfer of transfer_params
-  | Balance_of of balance_request_params
-  | Update_operators of update_operators_param
 
 // -- Helpers -- //
 
@@ -109,18 +55,13 @@ type nonce = nat
 // Represents whether a voter has voted against (false) or for (true) a given proposal.
 type vote_type = bool
 
-// Voter info for a proposal
-type voter =
-  { voter_address : address
-  ; vote_amount : nat
-  ; vote_type : vote_type
-  }
+type voter_map_key = (address * vote_type)
 
-// Amount of `seconds` used for lengths of time
-type seconds = nat
+type voter_map = (voter_map_key, nat) map
 
-// Length of a 'stage'
-type period = { length : seconds }
+// Amount of blocks.
+type blocks = { blocks : nat }
+type period = blocks
 
 // For efficiency, we only keep a `nat` for the numerator, whereas the
 // denominator is not stored and has a fixed value of `1000000`.
@@ -145,8 +86,8 @@ type proposal =
   // ^ total amount of votes in favor
   ; downvotes : nat
   // ^ total amount of votes against
-  ; start_date : timestamp
-  // ^ time of submission, used to order proposals
+  ; start_level : blocks
+  // ^ block level of submission, used to order proposals
   ; voting_stage_num : nat
   // ^ stage number in which it is possible to vote on this proposal
   ; metadata : proposal_metadata
@@ -155,7 +96,7 @@ type proposal =
   // ^ address of the proposer
   ; proposer_frozen_token : nat
   // ^ amount of frozen tokens used by the proposer, exluding the fixed fee
-  ; voters : voter list
+  ; voters : voter_map
   // ^ voter data
   ; quorum_threshold: quorum_threshold
   // ^ quorum threshold at the cycle in which proposal was raised
@@ -195,23 +136,31 @@ type quorum_threshold_at_cycle =
   ; staked : nat
   }
 
+// A 'delegate' has the permission to `vote` and `propose` on behalf of an address
+
+type delegate =
+  [@layout:comb]
+  { owner : address
+  ; delegate : address
+  }
+type delegates = (delegate, unit) big_map
+
 type storage =
-  { ledger : ledger
-  ; operators : operators
-  ; governance_token : governance_token
+  { governance_token : governance_token
   ; admin : address
   ; guardian : address // A special role that can drop any proposals at anytime
   ; pending_owner : address
   ; metadata : metadata_map
   ; extra : contract_extra
   ; proposals : (proposal_key, proposal) big_map
-  ; proposal_key_list_sort_by_date : (timestamp * proposal_key) set
+  ; proposal_key_list_sort_by_level : (blocks * proposal_key) set
   ; permits_counter : nonce
-  ; total_supply : total_supply
   ; freeze_history : freeze_history
   ; frozen_token_id : token_id
-  ; start_time : timestamp
+  ; start_level : blocks
   ; quorum_threshold_at_cycle : quorum_threshold_at_cycle
+  ; frozen_total_supply : nat
+  ; delegates : delegates
   }
 
 // -- Parameter -- //
@@ -224,13 +173,15 @@ type transfer_ownership_param = address
 type custom_ep_param = (string * bytes)
 
 type propose_params =
-  { frozen_token : nat
+  [@layout:comb]
+  { from : address
+  ; frozen_token : nat
   ; proposal_metadata : proposal_metadata
   }
 
 type vote_param =
-  [@layout:comb]
-  { proposal_key : proposal_key
+  { from : address
+  ; proposal_key : proposal_key
   ; vote_type : vote_type
   ; vote_amount : nat
   }
@@ -257,17 +208,24 @@ type transfer_contract_tokens_param =
   ; params : transfer_params
   }
 
+type update_delegate =
+  [@layout:comb]
+  { enable : bool
+  ; delegate : address
+  }
+
+type update_delegate_params = update_delegate list
 
 (*
  * Entrypoints that forbids Tz transfers
  *)
 type forbid_xtz_params =
-  | Call_FA2 of fa2_parameter
   | Drop_proposal of proposal_key
   | Vote of vote_param_permited list
   | Flush of nat
   | Freeze of freeze_param
   | Unfreeze of unfreeze_param
+  | Update_delegate of update_delegate_params
 
 (*
  * Entrypoints that allow Tz transfers
@@ -291,23 +249,25 @@ type custom_entrypoints = (string, bytes) big_map
 
 type decision_lambda_input =
   { proposal : proposal
-  ; storage : storage
+  ; extras : contract_extra
+  }
+
+type decision_lambda_output =
+  { operations : operation list
+  ; extras : contract_extra
+  ; guardian : address option
   }
 
 // -- Config -- //
-
-type initial_ledger_val = address * token_id * nat
-
-type ledger_list = (ledger_key * ledger_value) list
 
 type initial_config_data =
   { max_quorum : quorum_threshold
   ; min_quorum : quorum_threshold
   ; quorum_threshold : quorum_threshold
-  ; max_votes : nat
+  ; max_voters : nat
   ; period : period
-  ; proposal_flush_time: seconds
-  ; proposal_expired_time: seconds
+  ; proposal_flush_level: blocks
+  ; proposal_expired_level: blocks
   ; fixed_proposal_fee_in_token: nat
   ; max_quorum_change : unsigned_quorum_fraction
   ; quorum_change : unsigned_quorum_fraction
@@ -318,9 +278,9 @@ type initial_storage_data =
   { admin : address
   ; guardian : address
   ; governance_token : governance_token
-  ; now_val : timestamp
+  ; start_level : blocks
   ; metadata_map : metadata_map
-  ; ledger_lst : ledger_list
+  ; freeze_history : freeze_history_list
   }
 
 type initial_data =
@@ -328,23 +288,25 @@ type initial_data =
   ; config_data : initial_config_data
   }
 
+type decision_lambda = decision_lambda_input -> decision_lambda_output
+
 type config =
-  { proposal_check : propose_params * contract_extra -> bool
+  { proposal_check : propose_params * contract_extra -> unit
   // ^ A lambda used to verify whether a proposal can be submitted.
   // It checks 2 things: the proposal itself and the amount of tokens frozen upon submission.
   // It allows the DAO to reject a proposal by arbitrary logic and captures bond requirements
   ; rejected_proposal_slash_value : proposal * contract_extra -> nat
   // ^ When a proposal is rejected, the value that voters get back can be slashed.
   // This lambda returns the amount to be slashed.
-  ; decision_lambda : proposal * contract_extra -> operation list * contract_extra
+  ; decision_lambda : decision_lambda
   // ^ The decision lambda is executed based on a successful proposal.
   // It has access to the proposal, can modify `contractExtra` and perform arbitrary
   // operations.
 
   ; max_proposals : nat
   // ^ Determine the maximum number of ongoing proposals that are allowed in the contract.
-  ; max_votes : nat
-  // ^ Determine the maximum number of votes associated with a proposal.
+  ; max_voters : nat
+  // ^ Determine the maximum number of voters allowed to vote in the context of a proposal.
   ; max_quorum_threshold : quorum_fraction
   // ^ Determine the maximum value of quorum threshold that is allowed.
   ; min_quorum_threshold : quorum_fraction
@@ -366,13 +328,11 @@ type config =
   // ^ The total supply of governance tokens used in the computation of
   // of new quorum threshold value at each stage.
 
-  ; proposal_flush_time : seconds
-  // ^ Determine the minimum amount of seconds after the proposal is proposed
-  // to allow it to be `flushed`.
+  ; proposal_flush_level : blocks
+  // ^ The proposal age at (and above) which the proposal is considered flushable.
   // Has to be bigger than `period * 2`
-  ; proposal_expired_time : seconds
-  // ^ Determine the minimum amount of seconds after the proposal is proposed
-  // to be considered as expired.
+  ; proposal_expired_level : blocks
+  // ^ The proposal age at (and above) which the proposal is considered expired.
   // Has to be bigger than `proposal_flush_time`
 
   ; custom_entrypoints : custom_entrypoints
