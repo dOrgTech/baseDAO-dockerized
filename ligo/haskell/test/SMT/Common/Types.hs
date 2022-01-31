@@ -21,8 +21,8 @@ import Universum hiding (show)
 import Hedgehog
 import Text.Show (show)
 
-import Lorentz hiding (not, cast)
-import Tezos.Crypto (SecretKey)
+import Lorentz hiding (cast, not)
+import Morley.Tezos.Crypto (SecretKey)
 
 import Ligo.BaseDAO.Types
 import SMT.Model.BaseDAO.Types
@@ -75,7 +75,7 @@ data SmtOption = SmtOption
 
   , soProposalCheck :: (ProposeParams, ContractExtra) -> ModelT ()
   , soRejectedProposalSlashValue :: (Proposal, ContractExtra) -> ModelT Natural
-  , soDecisionLambda :: DecisionLambdaInput BigMap -> ModelT ([SimpleOperation], ContractExtra, Maybe Address)
+  , soDecisionLambda :: DecisionLambdaInput -> ModelT ([SimpleOperation], ContractExtra, Maybe Address)
   , soCustomEps :: Map MText (ByteString -> ModelT ())
   }
 

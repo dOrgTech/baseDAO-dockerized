@@ -31,13 +31,13 @@ import qualified Data.Map as Map
 import Fmt
 import Text.Show (show)
 
-import Michelson.Text
-import Lorentz hiding (not, cast, get)
+import Lorentz hiding (cast, get, not)
 import qualified Lorentz.Contracts.Spec.FA2Interface as FA2
-import Tezos.Address (ContractHash(..))
-import Tezos.Core
+import Morley.Tezos.Address (ContractHash(..))
+import Morley.Tezos.Core
 
 import Ligo.BaseDAO.Types
+import Ligo.BaseDAO.ErrorCodes
 
 -- | Transformer used in haskell implementation of BaseDAO
 newtype ModelT a = ModelT
@@ -60,7 +60,7 @@ data ModelState = ModelState
 
   , msProposalCheck :: (ProposeParams, ContractExtra) -> ModelT ()
   , msRejectedProposalSlashValue :: (Proposal, ContractExtra) -> ModelT Natural
-  , msDecisionLambda :: DecisionLambdaInput BigMap -> ModelT ([SimpleOperation], ContractExtra, Maybe Address)
+  , msDecisionLambda :: DecisionLambdaInput -> ModelT ([SimpleOperation], ContractExtra, Maybe Address)
   , msCustomEps :: Map MText (ByteString -> ModelT ())
   } deriving stock (Generic, Show)
 
@@ -69,7 +69,7 @@ instance Show ((ProposeParams, ContractExtra) -> ModelT ()) where
   show _ = "<msProposalCheck>"
 instance Show ((Proposal, ContractExtra) -> ModelT Natural) where
   show _ = "<msRejectedProposalSlashValue>"
-instance Show (DecisionLambdaInput BigMap -> ModelT ([SimpleOperation], ContractExtra, Maybe Address)) where
+instance Show (DecisionLambdaInput -> ModelT ([SimpleOperation], ContractExtra, Maybe Address)) where
   show _ = "<msDecisionLambda>"
 instance Show (ByteString -> ModelT ()) where
   show _ = "<customEps>"
@@ -203,7 +203,6 @@ data ContractType
 -- | The possible contract errors for the models
 data ModelError
   = NOT_DELEGATE
-  | BAD_ENTRYPOINT_PARAMETER
   | EMPTY_FLUSH
   | MAX_PROPOSALS_REACHED
   | NOT_ENOUGH_FROZEN_TOKENS
@@ -212,7 +211,6 @@ data ModelError
   | PROPOSAL_NOT_EXIST
   | EXPIRED_PROPOSAL
   | MISSIGNED
-  | MAX_VOTERS_REACHED
   | VOTING_STAGE_OVER
   | DROP_PROPOSAL_CONDITION_NOT_MET
   | NOT_ADMIN
@@ -222,6 +220,8 @@ data ModelError
   | UNPACKING_FAILED
   | FAIL_PROPOSAL_CHECK
   | MISSING_VALUE
+  | UNSTAKE_INVALID_PROPOSAL
+  | VOTER_DOES_NOT_EXIST
   deriving stock (Generic, Eq, Show)
 
 instance Buildable ModelError where
@@ -230,34 +230,25 @@ instance Buildable ModelError where
 instance (Buildable a, Buildable b) => Buildable (Either a b) where
   build = genericF
 
-instance (Buildable a, Buildable b) => Buildable (a, b) where
-  build  = genericF
-
-instance (Buildable a, Buildable b, Buildable c) => Buildable (a, b, c) where
-  build  = genericF
-
-instance (Buildable a, Buildable b, Buildable c, Buildable d) => Buildable (a, b, c, d) where
-  build  = genericF
-
-contractErrorToModelError :: Text -> ModelError
-contractErrorToModelError txtError =
-  case txtError of
-    "NOT_DELEGATE" -> NOT_DELEGATE
-    "BAD_ENTRYPOINT_PARAMETER" -> BAD_ENTRYPOINT_PARAMETER
-    "EMPTY_FLUSH" -> EMPTY_FLUSH
-    "MAX_PROPOSALS_REACHED" -> MAX_PROPOSALS_REACHED
-    "NOT_ENOUGH_FROZEN_TOKENS" -> NOT_ENOUGH_FROZEN_TOKENS
-    "NOT_PROPOSING_STAGE" -> NOT_PROPOSING_STAGE
-    "PROPOSAL_NOT_UNIQUE" -> PROPOSAL_NOT_UNIQUE
-    "PROPOSAL_NOT_EXIST" -> PROPOSAL_NOT_EXIST
-    "EXPIRED_PROPOSAL" -> EXPIRED_PROPOSAL
-    "MISSIGNED" -> MISSIGNED
-    "VOTING_STAGE_OVER" -> VOTING_STAGE_OVER
-    "DROP_PROPOSAL_CONDITION_NOT_MET" -> DROP_PROPOSAL_CONDITION_NOT_MET
-    "NOT_ADMIN" -> NOT_ADMIN
-    "NOT_PENDING_ADMIN" -> NOT_PENDING_ADMIN
-    "BAD_TOKEN_CONTRACT" -> BAD_TOKEN_CONTRACT
-    "ENTRYPOINT_NOT_FOUND" -> ENTRYPOINT_NOT_FOUND
-    "UNPACKING_FAILED" -> UNPACKING_FAILED
-    "FAIL_PROPOSAL_CHECK" -> FAIL_PROPOSAL_CHECK
-    _ -> error txtError
+contractErrorToModelError :: Integer -> ModelError
+contractErrorToModelError errorCode
+  | (errorCode == toInteger notDelegate) = NOT_DELEGATE
+  | (errorCode == toInteger emptyFlush) = EMPTY_FLUSH
+  | (errorCode == toInteger maxProposalsReached) = MAX_PROPOSALS_REACHED
+  | (errorCode == toInteger notEnoughFrozenTokens) = NOT_ENOUGH_FROZEN_TOKENS
+  | (errorCode == toInteger notProposingStage) = NOT_PROPOSING_STAGE
+  | (errorCode == toInteger proposalNotUnique) = PROPOSAL_NOT_UNIQUE
+  | (errorCode == toInteger proposalNotExist) = PROPOSAL_NOT_EXIST
+  | (errorCode == toInteger expiredProposal) = EXPIRED_PROPOSAL
+  | (errorCode == toInteger missigned) = MISSIGNED
+  | (errorCode == toInteger votingStageOver) = VOTING_STAGE_OVER
+  | (errorCode == toInteger dropProposalConditionNotMet) = DROP_PROPOSAL_CONDITION_NOT_MET
+  | (errorCode == toInteger notAdmin) = NOT_ADMIN
+  | (errorCode == toInteger notPendingAdmin) = NOT_PENDING_ADMIN
+  | (errorCode == toInteger badTokenContract) = BAD_TOKEN_CONTRACT
+  | (errorCode == toInteger entrypointNotFound) = ENTRYPOINT_NOT_FOUND
+  | (errorCode == toInteger unpackingFailed) = UNPACKING_FAILED
+  | (errorCode == toInteger failProposalCheck) = FAIL_PROPOSAL_CHECK
+  | (errorCode == toInteger unstakeInvalidProposal) = UNSTAKE_INVALID_PROPOSAL
+  | (errorCode == toInteger voterDoesNotExist) = VOTER_DOES_NOT_EXIST
+  | otherwise = error $ toText $ show errorCode

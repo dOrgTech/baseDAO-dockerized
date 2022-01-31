@@ -9,7 +9,7 @@ module Test.Ligo.BaseDAO.Proposal
 import Lorentz hiding (assert, (>>))
 import Universum
 
-import Morley.Nettest.Tasty (nettestScenarioOnEmulatorCaps, nettestScenarioOnNetworkCaps)
+import Test.Cleveland
 import Test.Tasty (TestTree, testGroup)
 
 import Ligo.BaseDAO.Types
@@ -23,180 +23,153 @@ import Test.Ligo.BaseDAO.Proposal.Vote
 test_BaseDAO_Proposal :: [TestTree]
 test_BaseDAO_Proposal =
   [ testGroup "Proposal creator:"
-      [ nettestScenarioOnEmulatorCaps "BaseDAO - can propose a valid proposal (emulator)" $
+      [ testScenario "BaseDAO - can propose a valid proposal" $ scenario $
           validProposal (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            getFrozenTotalSupplyEmulator
-            getFreezeHistoryEmulator
 
-      , nettestScenarioOnEmulatorCaps "cannot propose an invalid proposal (rejected)" $
+      , testScenario "cannot propose an invalid proposal (rejected)" $ scenario $
           rejectProposal (originateLigoDaoWithConfigDesc dynRecUnsafe)
 
-      , nettestScenarioOnEmulatorCaps "cannot propose a non-unique proposal" $
+      , testScenario "cannot propose a non-unique proposal" $ scenario $
           nonUniqueProposal (originateLigoDaoWithConfigDesc dynRecUnsafe)
 
-      , nettestScenarioOnEmulatorCaps "cannot propose same proposal even after dropping original one" $
+      , testScenario "cannot propose same proposal even after dropping original one" $ scenario $
           nonUniqueProposalEvenAfterDrop (originateLigoDaoWithConfigDesc dynRecUnsafe)
 
-      , nettestScenarioOnEmulatorCaps "cannot propose in a non-proposal period" $
+      , testScenario "cannot propose in a non-proposal period" $ scenario $
           nonProposalPeriodProposal (originateLigoDaoWithConfigDesc dynRecUnsafe)
 
       ]
 
   , testGroup "Voter:"
-      [ nettestScenarioOnEmulatorCaps "can vote on a valid proposal" $
+      [ testScenario "can vote on a valid proposal" $ scenario $
           voteValidProposal (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            checkBalanceEmulator
 
-      , nettestScenarioOnEmulatorCaps "cannot vote on a deleted proposal" $
+      , testScenario "cannot vote on a deleted proposal" $ scenario $
           voteDeletedProposal (originateLigoDaoWithConfigDesc dynRecUnsafe)
 
-      , nettestScenarioOnEmulatorCaps "cannot vote non-existing proposal" $
+      , testScenario "cannot vote non-existing proposal" $ scenario $
           voteNonExistingProposal (originateLigoDaoWithConfigDesc dynRecUnsafe)
 
-      , nettestScenarioOnEmulatorCaps "can vote on multiple proposals" $
+      , testScenario "can vote on multiple proposals" $ scenario $
           voteMultiProposals (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            checkBalanceEmulator
 
-      , nettestScenarioOnEmulatorCaps "cannot vote on outdated proposal" $
+      , testScenario "cannot vote on outdated proposal" $ scenario $
           voteOutdatedProposal (originateLigoDaoWithConfigDesc dynRecUnsafe)
 
-      , nettestScenarioOnEmulatorCaps "proposal track votes" $
-          proposalCorrectlyTrackVotes (originateLigoDaoWithConfigDesc dynRecUnsafe) getProposalEmulator
+      , testScenario "proposal track votes" $ scenario $
+          proposalCorrectlyTrackVotes (originateLigoDaoWithConfigDesc dynRecUnsafe)
 
       ]
 
 
-  , nettestScenarioOnEmulatorCaps "cannot vote if the vote amounts exceeds token balance" $
+  , testScenario "cannot vote if the vote amounts exceeds token balance" $ scenario $
       insufficientTokenVote (originateLigoDaoWithConfigDesc dynRecUnsafe)
 
   -- Note: When checking storage, we need to split the test into 2 (emulator and network) as demonstrated below:
-  , nettestScenarioOnEmulatorCaps "cannot propose with insufficient tokens (emulator) " $
-      insufficientTokenProposal (originateLigoDaoWithConfigDesc dynRecUnsafe) (\addr -> (length . sProposalKeyListSortByDate . fsStorage) <$> getFullStorage addr)
-
-  , nettestScenarioOnNetworkCaps "cannot propose with insufficient tokens (network) " $
-      insufficientTokenProposal (originateLigoDaoWithConfigDesc dynRecUnsafe) (\addr -> (length . sProposalKeyListSortByDate . fsStorage) <$> getFullStorageView addr)
+  , testScenario "cannot propose with insufficient tokens " $ scenario $
+      insufficientTokenProposal (originateLigoDaoWithConfigDesc dynRecUnsafe) (\addr -> (length . sProposalKeyListSortByDateRPC . fsStorageRPC) <$> getStorageRPC (TAddress addr))
 
   , testGroup "Permit:"
-      [ nettestScenarioOnEmulatorCaps "can vote from another user behalf" $
+      [ testScenario "can vote from another user behalf" $ scenario $
           voteWithPermit (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            checkBalanceEmulator
 
-      , nettestScenarioOnEmulatorCaps "counter works properly in permits" $
-          voteWithPermitNonce (originateLigoDaoWithConfigDesc dynRecUnsafe) getVotePermitsCounterEmulator
+      , testScenario "counter works properly in permits" $ scenario $
+          voteWithPermitNonce (originateLigoDaoWithConfigDesc dynRecUnsafe)
 
       ]
   , testGroup "Admin:"
-      [ nettestScenarioOnEmulatorCaps "can flush proposals that got accepted" $
-          flushAcceptedProposals (originateLigoDaoWithConfigDesc dynRecUnsafe) getFreezeHistoryEmulator
+      [ testScenario "can flush proposals that got accepted" $ scenario $
+          flushAcceptedProposals (originateLigoDaoWithConfigDesc dynRecUnsafe)
 
-      , nettestScenarioOnEmulatorCaps "can flush 2 proposals that got accepted" $
+      , testScenario "can flush 2 proposals that got accepted" $ scenario $
           flushAcceptedProposalsWithAnAmount
             (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            checkBalanceEmulator
 
-      , nettestScenarioOnEmulatorCaps "can flush proposals that got rejected due to not meeting quorum_threshold" $
+      , testScenario "can flush proposals that got rejected due to not meeting quorum_threshold" $ scenario $
           flushRejectProposalQuorum (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            checkBalanceEmulator
 
-      , nettestScenarioOnEmulatorCaps "can flush proposals that got rejected due to negative votes" $
+      , testScenario "can flush proposals that got rejected due to negative votes" $ scenario $
           flushRejectProposalNegativeVotes (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            checkBalanceEmulator
 
-      , nettestScenarioOnEmulatorCaps "flush should not affect proposals that cannot be flushed yet" $
+      , testScenario "flush should not affect proposals that cannot be flushed yet" $ scenario $
           flushProposalFlushTimeNotReach (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            checkBalanceEmulator
 
-      , nettestScenarioOnEmulatorCaps "flush should fail on expired proposals" $
+      , testScenario "flush should fail on expired proposals" $ scenario $
           flushFailOnExpiredProposal (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            checkBalanceEmulator
 
-      , nettestScenarioOnEmulatorCaps "flush with bad cRejectedProposalSlashValue" $
+      , testScenario "flush with bad cRejectedProposalSlashValue" $ scenario $
           flushWithBadConfig (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            checkBalanceEmulator
 
-      , nettestScenarioOnEmulatorCaps "flush and run decision lambda" $
+      , testScenario "flush and run decision lambda" $ scenario $
           flushDecisionLambda (originateLigoDaoWithConfigDesc dynRecUnsafe)
 
-      , nettestScenarioOnEmulatorCaps "empty flush calls are rejected" $
+      , testScenario "empty flush calls are rejected" $ scenario $
           flushNotEmpty (originateLigoDaoWithConfigDesc dynRecUnsafe)
 
-      , nettestScenarioOnEmulatorCaps "can drop proposals, only when allowed" $
-          dropProposal (originateLigoDaoWithConfigDesc dynRecUnsafe) checkBalanceEmulator
+      , testScenario "can drop proposals, only when allowed" $ scenario $
+          dropProposal (originateLigoDaoWithConfigDesc dynRecUnsafe)
 
       ]
 
   , testGroup "Bounded Value"
-      [ nettestScenarioOnEmulatorCaps "bounded value on proposals" $
+      [ testScenario "bounded value on proposals" $ scenario $
           proposalBoundedValue (originateLigoDaoWithConfigDesc dynRecUnsafe)
-
-      , nettestScenarioOnEmulatorCaps "bounded value on votes" $
-          votesBoundedValue (originateLigoDaoWithConfigDesc dynRecUnsafe)
-
       ]
 
   , testGroup "Freeze-Unfreeze"
-      [ nettestScenarioOnNetworkCaps "can freeze tokens (emulator) " $
+      [ testScenario "can freeze tokens " $ scenario $
           freezeTokens (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            (\_ _ _  -> pure ())
-      , nettestScenarioOnEmulatorCaps "can freeze tokens (network) " $
-          freezeTokens (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            checkBalanceEmulator
 
-      , nettestScenarioOnEmulatorCaps "cannot unfreeze tokens from the same period" $
+      , testScenario "cannot unfreeze tokens from the same period" $ scenario $
           cannotUnfreezeFromSamePeriod (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            checkBalanceEmulator
 
-      , nettestScenarioOnEmulatorCaps "cannot unfreeze staked tokens" $
+      , testScenario "cannot unfreeze staked tokens" $ scenario $
           cannotUnfreezeStakedTokens (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            checkBalanceEmulator
 
-      , nettestScenarioOnEmulatorCaps "can unfreeze tokens from the previous period" $
+      , testScenario "can unfreeze tokens from the previous period" $ scenario $
           canUnfreezeFromPreviousPeriod (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            checkBalanceEmulator
 
-      , nettestScenarioOnEmulatorCaps "correctly track freeze history" $
+      , testScenario "correctly track freeze history" $ scenario $
           checkFreezeHistoryTracking (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            getFreezeHistoryEmulator
+
+      , testScenario "tokens are unstaked correctly, only when possible" $ scenario $
+          unstakeVote (originateLigoDaoWithConfigDesc dynRecUnsafe)
       ]
 
  , testGroup "LIGO-specific proposal tests:"
-    [ nettestScenarioOnEmulatorCaps "can propose a valid proposal with a fixed fee" $
-        validProposalWithFixedFee getFrozenTotalSupplyEmulator getFreezeHistoryEmulator
+    [ testScenario "can propose a valid proposal with a fixed fee" $ scenario $
+        validProposalWithFixedFee
 
-    , nettestScenarioOnEmulatorCaps "cannot propose with insufficient tokens to pay the fee"
+    , testScenario "cannot propose with insufficient tokens to pay the fee" $ scenario
        cannotProposeWithInsufficientTokens
 
-    , nettestScenarioOnEmulatorCaps "a proposer is returned a fee after the proposal succeeds" $
-       proposerIsReturnedFeeAfterSucceeding checkBalanceEmulator
+    , testScenario "a proposer is returned a fee after the proposal succeeds" $ scenario $
+       proposerIsReturnedFeeAfterSucceeding
 
-    , nettestScenarioOnEmulatorCaps "a proposal is rejected if upvotes > downvotes and quorum threshold is not met" $
-        proposalIsRejectedIfNoQuorum checkBalanceEmulator
+    , testScenario "a proposal is rejected if upvotes > downvotes and quorum threshold is not met" $ scenario $
+        proposalIsRejectedIfNoQuorum
 
-    , nettestScenarioOnEmulatorCaps "a proposal succeeds if upvotes > downvotes and quorum threshold is met" $
-        proposalSucceedsIfUpVotesGtDownvotesAndQuorum checkBalanceEmulator
+    , testScenario "a proposal succeeds if upvotes > downvotes and quorum threshold is met" $ scenario $
+        proposalSucceedsIfUpVotesGtDownvotesAndQuorum
 
-    , nettestScenarioOnEmulatorCaps "the fee is burned if the proposal fails" $
-        burnsFeeOnFailure Downvoted checkBalanceEmulator
+    , testScenario "the fee is burned if the proposal fails" $ scenario $
+        burnsFeeOnFailure Downvoted
 
-    , nettestScenarioOnEmulatorCaps "the fee is burned if the proposal doesn't meet the quorum" $
-        burnsFeeOnFailure QuorumNotMet checkBalanceEmulator
+    , testScenario "the fee is burned if the proposal doesn't meet the quorum" $ scenario $
+        burnsFeeOnFailure QuorumNotMet
 
-    , nettestScenarioOnEmulatorCaps "the frozen tokens are correctly unstaked when address cast multiple votes" $
-        unstakesTokensForMultipleVotes getFreezeHistoryEmulator
+    , testScenario "the frozen tokens are correctly unstaked when address cast multiple votes" $ scenario $
+        unstakesTokensForMultipleVotes
     ]
 
   , testGroup "QuorumThreshold Updates"
-      [ nettestScenarioOnEmulatorCaps "updates quorum-threshold correctly" $
+      [ testScenario "updates quorum-threshold correctly" $ scenario $
           checkQuorumThresholdDynamicUpdate (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            getQtAtCycleEmulator
-      , nettestScenarioOnEmulatorCaps "updates quorum-threshold correctly within upper bounds" $
+      , testScenario "updates quorum-threshold correctly within upper bounds" $ scenario $
           checkQuorumThresholdDynamicUpdateUpperBound (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            getQtAtCycleEmulator
-      , nettestScenarioOnEmulatorCaps "updates quorum-threshold correctly within lower bounds" $
+      , testScenario "updates quorum-threshold correctly within lower bounds" $ scenario $
           checkQuorumThresholdDynamicUpdateLowerBound (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            getQtAtCycleEmulator
-      , nettestScenarioOnEmulatorCaps "proposal saves quorum for cycle" $
+      , testScenario "proposal saves quorum for cycle" $ scenario $
           checkProposalSavesQuorum (originateLigoDaoWithConfigDesc dynRecUnsafe)
-            getProposalEmulator
       ]
   ]

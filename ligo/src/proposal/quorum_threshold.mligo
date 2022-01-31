@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-MIT-TQ
 
 #include "../types.mligo"
+#include "../error_codes.mligo"
 
 [@inline]
 let quorum_denominator_int = int(quorum_denominator)
@@ -49,7 +50,7 @@ let bound_qt (qt, min_qt, max_qt : quorum_fraction * quorum_fraction * quorum_fr
   else qt
 
 [@inline]
-// Returns the 'cycle' number of which the given 'stage' number is part of.
+// Returns the `cycle` number of which the given `stage` number is part of.
 let stage_to_cycle (p: nat): nat = (p + 1n) / 2n
 
 [@inline]
@@ -65,7 +66,7 @@ let to_unsigned(n : quorum_fraction): unsigned_quorum_fraction =
   { numerator =
       match is_nat(n.numerator) with
       | Some n -> n
-      | None   -> (failwith("BAD_STATE") : nat)
+      | None   -> (failwith bad_state : nat)
   }
 
 let update_quorum(current_period, store, config : nat * storage * config): storage =

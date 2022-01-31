@@ -24,6 +24,9 @@ module Test.Ligo.BaseDAO.Proposal.Config
 import Lorentz
 import Universum (Constraint, fromIntegral, (?:))
 
+import Morley.Util.Named
+
+import qualified Ligo.BaseDAO.ErrorCodes as DAO
 import qualified Ligo.BaseDAO.Types as DAO
 import Test.Ligo.BaseDAO.Common.Errors (tooSmallXtzErrMsg)
 
@@ -108,7 +111,9 @@ proposalFrozenTokensMinBound minTokens = ProposalFrozenTokensCheck $ do
     push ()
   else do
     push tooSmallXtzErrMsg
-    failCustom #fAIL_PROPOSAL_CHECK
+    push DAO.failProposalCheck
+    pair
+    failWith
 
 divideOnRejectionBy :: Natural -> RejectedProposalSlashValue
 divideOnRejectionBy divisor = RejectedProposalSlashValue $ do
@@ -176,28 +181,27 @@ decisionLambdaConfig target = ConfigDesc $ passProposerOnDecision target
 --------------------------------------------------------------------------------
 --
 instance IsConfigDescExt DAO.Config ConfigConstants where
-  fillConfig ConfigConstants{..} DAO.Config'{..} = DAO.Config'
+  fillConfig ConfigConstants{..} DAO.Config{..} = DAO.Config
     { cMaxProposals = cmMaxProposals ?: cMaxProposals
-    , cMaxVoters = cmMaxVoters ?: cMaxVoters
     , cProposalFlushLevel = cmProposalFlushTime ?: cProposalFlushLevel
     , cProposalExpiredLevel = cmProposalExpiredTime ?: cProposalExpiredLevel
     , ..
     }
 
 instance IsConfigDescExt DAO.Config DAO.Period where
-  fillConfig vp DAO.Config'{..} = DAO.Config'
+  fillConfig vp DAO.Config{..} = DAO.Config
     { cPeriod = vp
     , ..
     }
 
 instance IsConfigDescExt DAO.Config DAO.FixedFee where
-  fillConfig ff DAO.Config'{..} = DAO.Config'
+  fillConfig ff DAO.Config{..} = DAO.Config
     { cFixedProposalFee = ff
     , ..
     }
 
 instance IsConfigDescExt DAO.Config ProposalFrozenTokensCheck where
-  fillConfig (ProposalFrozenTokensCheck check) DAO.Config'{..} = DAO.Config'
+  fillConfig (ProposalFrozenTokensCheck check) DAO.Config{..} = DAO.Config
     { cProposalCheck = do
         dip drop
         toFieldNamed #ppFrozenToken
@@ -206,8 +210,8 @@ instance IsConfigDescExt DAO.Config ProposalFrozenTokensCheck where
     }
 
 instance IsConfigDescExt DAO.Config RejectedProposalSlashValue where
-  fillConfig (RejectedProposalSlashValue toSlashValue) DAO.Config'{..} =
-    DAO.Config'
+  fillConfig (RejectedProposalSlashValue toSlashValue) DAO.Config{..} =
+    DAO.Config
     { cRejectedProposalSlashValue = do
         dip drop
         toField #plProposerFrozenToken; toNamed #proposerFrozenToken
@@ -216,8 +220,8 @@ instance IsConfigDescExt DAO.Config RejectedProposalSlashValue where
     }
 
 instance IsConfigDescExt DAO.Config DecisionLambdaAction where
-  fillConfig (DecisionLambdaAction lam) DAO.Config'{..} =
-    DAO.Config'
+  fillConfig (DecisionLambdaAction lam) DAO.Config{..} =
+    DAO.Config
     { cDecisionLambda = do
         getField #diProposal
         getField #plProposerFrozenToken; toNamed #frozen_tokens
@@ -226,28 +230,28 @@ instance IsConfigDescExt DAO.Config DecisionLambdaAction where
         framed lam
         swap
         dip (push Nothing)
-        constructStack @(DAO.DecisionLambdaOutput BigMap)
+        constructStack @DAO.DecisionLambdaOutput
 
     , ..
     }
 
 instance IsConfigDescExt DAO.Config ("changePercent" :! Natural) where
-  fillConfig (arg #changePercent -> cp) DAO.Config'{..} =
-    DAO.Config'
+  fillConfig (N cp) DAO.Config{..} =
+    DAO.Config
     { cQuorumChange = DAO.QuorumFraction $ fromIntegral $ DAO.percentageToFractionNumerator cp
     , ..
     }
 
 instance IsConfigDescExt DAO.Config ("maxChangePercent" :! Natural) where
-  fillConfig (arg #maxChangePercent -> cp) DAO.Config'{..} =
-    DAO.Config'
+  fillConfig (N cp) DAO.Config{..} =
+    DAO.Config
     { cMaxQuorumChange = DAO.QuorumFraction $ fromIntegral $ DAO.percentageToFractionNumerator cp
     , ..
     }
 
 instance IsConfigDescExt DAO.Config ("governanceTotalSupply" :! Natural) where
-  fillConfig (arg #governanceTotalSupply -> ts) DAO.Config'{..} =
-    DAO.Config'
+  fillConfig (N ts) DAO.Config{..} =
+    DAO.Config
     { cGovernanceTotalSupply = DAO.GovernanceTotalSupply ts
     , ..
     }

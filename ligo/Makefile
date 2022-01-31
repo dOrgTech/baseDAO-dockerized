@@ -62,7 +62,6 @@ $(OUT)/trivialDAO_storage.tz : fixed_proposal_fee_in_token = 0n
 $(OUT)/trivialDAO_storage.tz : quorum_threshold = 10n
 $(OUT)/trivialDAO_storage.tz : min_quorum = 1n
 $(OUT)/trivialDAO_storage.tz : max_quorum = 99n
-$(OUT)/trivialDAO_storage.tz : max_voters = 1000n
 $(OUT)/trivialDAO_storage.tz : period = 15840n
 $(OUT)/trivialDAO_storage.tz : quorum_change = 5n
 $(OUT)/trivialDAO_storage.tz : max_quorum_change = 19n
@@ -88,7 +87,6 @@ $(OUT)/trivialDAO_storage.tz: src/**
         ; config_data = \
           { max_quorum = { numerator = (($(max_quorum) : nat) * quorum_denominator)/100n } \
           ; min_quorum = { numerator = (($(min_quorum) : nat) * quorum_denominator)/100n } \
-          ; max_voters = ($(max_voters) : nat) \
           ; period = { blocks = ($(period) : nat) } \
           ; proposal_flush_level = { blocks = ($(proposal_flush_level) : nat) } \
           ; proposal_expired_level = { blocks = ($(proposal_expired_level) : nat) }\
@@ -100,7 +98,7 @@ $(OUT)/trivialDAO_storage.tz: src/**
           } \
         })"
 	# ================= Compilation successful ================= #
-	# See "$(OUT)/trivialDAO_storage.tz" for compilation result  #
+	# See "$(OUT)/trivialDAO_storage.tz" for compilation result	#
 	#
 
 $(OUT)/registryDAO_storage.tz : frozen_scale_value = 1n
@@ -116,7 +114,6 @@ $(OUT)/registryDAO_storage.tz : fixed_proposal_fee_in_token = 0n
 $(OUT)/registryDAO_storage.tz : quorum_threshold = 10n
 $(OUT)/registryDAO_storage.tz : min_quorum = 1n
 $(OUT)/registryDAO_storage.tz : max_quorum = 99n
-$(OUT)/registryDAO_storage.tz : max_voters = 1000n
 $(OUT)/registryDAO_storage.tz : period = 15840n
 $(OUT)/registryDAO_storage.tz : quorum_change = 5n
 $(OUT)/registryDAO_storage.tz : max_quorum_change = 19n
@@ -143,7 +140,6 @@ $(OUT)/registryDAO_storage.tz: src/**
           ; config_data = \
             { max_quorum = { numerator = (($(max_quorum) : nat) * quorum_denominator)/100n } \
             ; min_quorum = { numerator = (($(min_quorum) : nat) * quorum_denominator)/100n } \
-            ; max_voters = ($(max_voters) : nat) \
             ; period = { blocks = ($(period) : nat) } \
             ; proposal_flush_level = { blocks = ($(proposal_flush_level) : nat) } \
             ; proposal_expired_level = { blocks = ($(proposal_expired_level) : nat) } \
@@ -178,7 +174,6 @@ $(OUT)/treasuryDAO_storage.tz : fixed_proposal_fee_in_token = 0n
 $(OUT)/treasuryDAO_storage.tz : quorum_threshold = 10n
 $(OUT)/treasuryDAO_storage.tz : min_quorum = 1n
 $(OUT)/treasuryDAO_storage.tz : max_quorum = 99n
-$(OUT)/treasuryDAO_storage.tz : max_voters = 1000n
 $(OUT)/treasuryDAO_storage.tz : period = 15840n
 $(OUT)/treasuryDAO_storage.tz : quorum_change = 5n
 $(OUT)/treasuryDAO_storage.tz : max_quorum_change = 19n
@@ -205,7 +200,6 @@ $(OUT)/treasuryDAO_storage.tz: src/**
           ; config_data = \
             { max_quorum = { numerator = (($(max_quorum) : nat) * quorum_denominator)/100n } \
             ; min_quorum = { numerator = (($(min_quorum) : nat) * quorum_denominator)/100n } \
-            ; max_voters = ($(max_voters) : nat) \
             ; period = { blocks = ($(period) : nat) } \
             ; proposal_flush_level = { blocks = ($(proposal_flush_level) : nat) } \
             ; proposal_expired_level = { blocks = ($(proposal_expired_level) : nat) } \
@@ -251,33 +245,35 @@ test-storage:
 		governance_token_id=0n \
 		start_level=100n
 
+haskell-resources: test-storage all
+	# ============== Copying resources for Haskell library ============== #
+	mkdir -p haskell/resources
+	cp $(OUT)/* haskell/resources
 
+metadata : frozen_token_symbol = frozen_token
+metadata : frozen_token_name = Frozen Token
+metadata : frozen_token_thumbnail_uri =
 metadata : output = metadata.json
-metadata: test-storage all
+metadata: haskell-resources
 	$(MAKE) -C haskell build PACKAGE=baseDAO-ligo-meta \
-		STACK_DEV_OPTIONS="--fast --ghc-options -Wwarn" \
-	BASEDAO_LIGO_PATH=../$(OUT)/baseDAO.tz \
-	REGISTRY_STORAGE_PATH=../$(OUT)/registryDAO_storage.tz \
-	TREASURY_STORAGE_PATH=../$(OUT)/treasuryDAO_storage.tz
+		STACK_DEV_OPTIONS="--fast --ghc-options -Wwarn"
 
 	$(MAKE) -C haskell exec PACKAGE=baseDAO-ligo-meta \
-	EXEC_ARGUMENTS=print-metadata \
-  EXEC_OUTPUT=$(output)
+		EXEC_ARGUMENTS="print-metadata \
+		--frozen-token-symbol $(frozen_token_symbol) \
+		--frozen-token-name \"$(call escape_double_quote,$(frozen_token_name))\" \
+		--frozen-token-thumbnail-uri \"$(call escape_double_quote,$(frozen_token_thumbnail_uri))\" \
+		" EXEC_OUTPUT=$(output)
 
-test: test-storage all
-	$(MAKE) -C haskell test PACKAGE=baseDAO-ligo-meta \
-	BASEDAO_LIGO_PATH=../$(OUT)/baseDAO.tz \
-	REGISTRY_STORAGE_PATH=../$(OUT)/registryDAO_storage.tz \
-	TREASURY_STORAGE_PATH=../$(OUT)/treasuryDAO_storage.tz
+test: haskell-resources
+	$(MAKE) -C haskell test PACKAGE=baseDAO-ligo-meta
 
-typescript: all
+typescript: haskell-resources
 	$(MAKE) -C haskell build PACKAGE=baseDAO-ligo-meta \
-		STACK_DEV_OPTIONS="--fast --ghc-options -Wwarn" \
-	BASEDAO_LIGO_PATH=../$(OUT)/baseDAO.tz \
-	REGISTRY_STORAGE_PATH=../$(OUT)/registryDAO_storage.tz \
-	TREASURY_STORAGE_PATH=../$(OUT)/treasuryDAO_storage.tz
+		STACK_DEV_OPTIONS="--fast --ghc-options -Wwarn"
 	rm -rf $(TS_OUT)/baseDAO/src/generated/*
 	stack exec -- baseDAO-ligo-meta generate-typescript --target=$(TS_OUT)/baseDAO/src/generated/
 
 clean:
 	rm -rf $(OUT)
+	rm -rf haskell/resources

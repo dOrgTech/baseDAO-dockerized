@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2021 TQ Tezos
 // SPDX-License-Identifier: LicenseRef-MIT-TQ
 
-// Corresponds to Types.hs module
-
 #if !TYPES_H
 #define TYPES_H
 
@@ -10,7 +8,7 @@
 type token_id = nat
 
 // Frozen token history for an address.
-// This track the stage number in which it was last updated and differentiates between
+// This tracks the stage number in which it was last updated and differentiates between
 // tokens that were frozen during that stage and the ones frozen in any other before.
 // It does so because only tokens that were frozen in the past can be staked, which is
 // also why it tracks staked tokens in a single field.
@@ -23,8 +21,6 @@ type address_freeze_history =
 
 // Frozen token history for all addresses
 type freeze_history = (address, address_freeze_history) big_map
-
-type freeze_history_list = (address * nat) list
 
 // FA2 transfer types
 type transfer_destination =
@@ -55,16 +51,17 @@ type nonce = nat
 // Represents whether a voter has voted against (false) or for (true) a given proposal.
 type vote_type = bool
 
-type voter_map_key = (address * vote_type)
-
-type voter_map = (voter_map_key, nat) map
+type staked_vote = nat
 
 // Amount of blocks.
 type blocks = { blocks : nat }
+
+// Length of a stage, in number of blocks
 type period = blocks
 
-// For efficiency, we only keep a `nat` for the numerator, whereas the
-// denominator is not stored and has a fixed value of `1000000`.
+// Representation of a quorum fraction. For efficiency, we only keep a `nat`
+// for the numerator, whereas the denominator is not stored and has a fixed value
+// of `quorum_denominator`.
 type quorum_fraction = { numerator : int }
 let quorum_denominator = 1000000n
 
@@ -75,7 +72,7 @@ type unsigned_quorum_fraction = { numerator : nat }
 // Quorum threshold that a proposal needs to meet in order to be accepted,
 // expressed as a fraction of the total_supply of frozen tokens, only
 // storing the numerator while denominator is assumed to be
-// fraction_denominator.
+// `quorum_denominator`.
 type quorum_threshold = unsigned_quorum_fraction
 
 // Types to store info of a proposal
@@ -96,8 +93,6 @@ type proposal =
   // ^ address of the proposer
   ; proposer_frozen_token : nat
   // ^ amount of frozen tokens used by the proposer, exluding the fixed fee
-  ; voters : voter_map
-  // ^ voter data
   ; quorum_threshold: quorum_threshold
   // ^ quorum threshold at the cycle in which proposal was raised
   }
@@ -126,7 +121,7 @@ type governance_token =
 // update quorum_threshold_at_cycle will reset the staked count to zero. And
 // since this procedure is called from a `propose` call, which starts the
 // staking of tokens for the cycle, and we increment `staked` count at each
-// 'propose' or 'vote' call, the `staked` field will contain the tokens staked
+// `propose` or `vote` call, the `staked` field will contain the tokens staked
 // in that particular cycle. And the very first `propose` call in a cycle will
 // see the staked tokens from the past cycle, and thus can use it to update the
 // quorum threshold for the current cycle.
@@ -136,8 +131,7 @@ type quorum_threshold_at_cycle =
   ; staked : nat
   }
 
-// A 'delegate' has the permission to `vote` and `propose` on behalf of an address
-
+// A `delegate` has the permission to `vote` and `propose` on behalf of an address
 type delegate =
   [@layout:comb]
   { owner : address
@@ -154,6 +148,7 @@ type storage =
   ; extra : contract_extra
   ; proposals : (proposal_key, proposal) big_map
   ; proposal_key_list_sort_by_level : (blocks * proposal_key) set
+  ; staked_votes : (address * proposal_key, staked_vote) big_map
   ; permits_counter : nonce
   ; freeze_history : freeze_history
   ; frozen_token_id : token_id
@@ -167,6 +162,7 @@ type storage =
 
 type freeze_param = nat
 type unfreeze_param = nat
+type unstake_vote_param = proposal_key list
 
 type transfer_ownership_param = address
 
@@ -226,6 +222,7 @@ type forbid_xtz_params =
   | Freeze of freeze_param
   | Unfreeze of unfreeze_param
   | Update_delegate of update_delegate_params
+  | Unstake_vote of unstake_vote_param
 
 (*
  * Entrypoints that allow Tz transfers
@@ -236,6 +233,7 @@ type allow_xtz_params =
   | Transfer_contract_tokens of transfer_contract_tokens_param
   | Transfer_ownership of transfer_ownership_param
   | Accept_ownership of unit
+  | Default of unit
 
 (*
  * Full parameter of the contract.
@@ -260,11 +258,12 @@ type decision_lambda_output =
 
 // -- Config -- //
 
+type freeze_history_list = (address * nat) list
+
 type initial_config_data =
   { max_quorum : quorum_threshold
   ; min_quorum : quorum_threshold
   ; quorum_threshold : quorum_threshold
-  ; max_voters : nat
   ; period : period
   ; proposal_flush_level: blocks
   ; proposal_expired_level: blocks
@@ -296,7 +295,7 @@ type config =
   // It checks 2 things: the proposal itself and the amount of tokens frozen upon submission.
   // It allows the DAO to reject a proposal by arbitrary logic and captures bond requirements
   ; rejected_proposal_slash_value : proposal * contract_extra -> nat
-  // ^ When a proposal is rejected, the value that voters get back can be slashed.
+  // ^ When a proposal is rejected, the value that the proposer gets back can be slashed.
   // This lambda returns the amount to be slashed.
   ; decision_lambda : decision_lambda
   // ^ The decision lambda is executed based on a successful proposal.
@@ -305,8 +304,6 @@ type config =
 
   ; max_proposals : nat
   // ^ Determine the maximum number of ongoing proposals that are allowed in the contract.
-  ; max_voters : nat
-  // ^ Determine the maximum number of voters allowed to vote in the context of a proposal.
   ; max_quorum_threshold : quorum_fraction
   // ^ Determine the maximum value of quorum threshold that is allowed.
   ; min_quorum_threshold : quorum_fraction

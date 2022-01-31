@@ -19,14 +19,16 @@ module Test.Ligo.BaseDAO.Proposal.Propose
   , validProposal
   , validProposalWithFixedFee
   , unstakesTokensForMultipleVotes
+  , unstakeVote
   ) where
 
 import Universum
 
 import Lorentz hiding (assert, (>>))
-import Morley.Nettest
-import Util.Named
+import Morley.Util.Named
+import Test.Cleveland
 
+import Ligo.BaseDAO.ErrorCodes
 import Ligo.BaseDAO.Types
 import qualified Lorentz.Contracts.Spec.FA2Interface as FA2
 import Test.Ligo.BaseDAO.Common
@@ -48,11 +50,14 @@ vote how addr key =
 downvote :: Address -> ProposalKey -> PermitProtected VoteParam
 downvote = vote False
 
+type instance AsRPC FA2.TransferItem = FA2.TransferItem
+
 validProposal
-  :: (MonadNettest caps base m, HasCallStack)
-  => (ConfigDesc Config -> OriginateFn m) -> GetFrozenTotalSupplyFn m -> GetFreezeHistoryFn m -> m ()
-validProposal originateFn getFrozenTotalSupplyFn getFreezeHistoryFn = do
+  :: (MonadCleveland caps base m, HasCallStack)
+  => (ConfigDesc Config -> OriginateFn m) -> m ()
+validProposal originateFn = do
   DaoOriginateData{..} <- originateFn testConfig defaultQuorumThreshold
+  startLevel <- getOriginationLevel dodDao
   let params = ProposeParams
         { ppFrozenToken = 10
         , ppProposalMetadata = lPackValueRaw @Integer 1
@@ -60,32 +65,39 @@ validProposal originateFn getFrozenTotalSupplyFn getFreezeHistoryFn = do
         }
 
   withSender dodOwner1 $
-    call dodDao (Call @"Freeze") (#amount .! 10)
+    call dodDao (Call @"Freeze") (#amount :! 10)
   -- Check the token contract got a transfer call from
   -- baseDAO
-  checkStorage (unTAddress dodTokenContract)
-    (toVal [[FA2.TransferItem { tiFrom = dodOwner1, tiTxs = [FA2.TransferDestination { tdTo = unTAddress dodDao, tdTokenId = FA2.theTokenId, tdAmount = 10 }] }]])
+  storage <- getStorage @[[FA2.TransferItem]] (unTAddress dodTokenContract)
+  assert (storage ==
+    ([[FA2.TransferItem { tiFrom = dodOwner1, tiTxs = [FA2.TransferDestination { tdTo = unTAddress dodDao, tdTokenId = FA2.theTokenId, tdAmount = 10 }] }]]))
+    "Unexpected Transfers"
 
   -- Advance one voting period to a proposing stage.
-  advanceLevel dodPeriod
+  advanceToLevel (startLevel + dodPeriod)
 
   withSender dodOwner1 $ call dodDao (Call @"Propose") params
 
   -- Check balance
-  supply <- getFrozenTotalSupplyFn (unTAddress dodDao)
+  supply <- getFrozenTotalSupply dodDao
   supply @== 10 -- initial = 0
 
   -- Check freeze history
-  fh <- getFreezeHistoryFn (unTAddress dodDao) dodOwner1
-  fh @== Just (AddressFreezeHistory 0 0 1 10)
-
+  fh <- getFreezeHistory dodDao dodOwner1
+  fh @== Just AddressFreezeHistory
+    { fhCurrentStageNum = 1
+    , fhStaked = 10
+    , fhCurrentUnstaked = 0
+    , fhPastUnstaked = 0
+    }
 
 validProposalWithFixedFee
-  :: forall caps base m. (MonadNettest caps base m, HasCallStack)
-  => GetFrozenTotalSupplyFn m -> GetFreezeHistoryFn m -> m ()
-validProposalWithFixedFee getFrozenTotalSupplyFn getFreezeHistoryFn = do
+  :: forall caps base m. (MonadCleveland caps base m, HasCallStack)
+  => m ()
+validProposalWithFixedFee = do
   DaoOriginateData{..} <-
     originateLigoDaoWithConfigDesc dynRecUnsafe (ConfigDesc (FixedFee 42)) defaultQuorumThreshold
+  startLevel <- getOriginationLevel dodDao
   let params = ProposeParams
         { ppFrozenToken = 10
         , ppProposalMetadata = lPackValueRaw @Integer 1
@@ -94,22 +106,26 @@ validProposalWithFixedFee getFrozenTotalSupplyFn getFreezeHistoryFn = do
   let proposer = dodOwner1
 
   withSender proposer $
-    call dodDao (Call @"Freeze") (#amount .! 52)
+    call dodDao (Call @"Freeze") (#amount :! 52)
   -- Advance one voting period to a proposing stage.
-  advanceLevel dodPeriod
+  advanceToLevel (startLevel + dodPeriod)
 
   withSender proposer $ call dodDao (Call @"Propose") params
 
-  supply <- getFrozenTotalSupplyFn (unTAddress dodDao)
+  supply <- getFrozenTotalSupply dodDao
   supply @== 52
-  fh <- getFreezeHistoryFn (unTAddress dodDao) dodOwner1
-  fh @== Just (AddressFreezeHistory 0 0 1 52)
+  fh <- getFreezeHistory dodDao dodOwner1
+  fh @== Just AddressFreezeHistory
+    { fhCurrentStageNum = 1
+    , fhStaked = 52
+    , fhCurrentUnstaked = 0
+    , fhPastUnstaked = 0
+    }
 
 proposerIsReturnedFeeAfterSucceeding
-  :: forall caps base m. (MonadNettest caps base m, HasCallStack)
-  => CheckBalanceFn m
-  -> m ()
-proposerIsReturnedFeeAfterSucceeding checkBalanceFn = do
+  :: forall caps base m. (MonadCleveland caps base m, HasCallStack)
+  => m ()
+proposerIsReturnedFeeAfterSucceeding = do
   DaoOriginateData{..} <-
     originateLigoDaoWithConfigDesc dynRecUnsafe
       ((ConfigDesc $ Period 60)
@@ -121,19 +137,20 @@ proposerIsReturnedFeeAfterSucceeding checkBalanceFn = do
   let voter = dodOwner2
 
   withSender voter $
-    call dodDao (Call @"Freeze") (#amount .! 20)
+    call dodDao (Call @"Freeze") (#amount :! 20)
 
   withSender proposer $
-    call dodDao (Call @"Freeze") (#amount .! 42)
+    call dodDao (Call @"Freeze") (#amount :! 42)
 
   withSender proposer $
-    call dodDao (Call @"Freeze") (#amount .! 10)
+    call dodDao (Call @"Freeze") (#amount :! 10)
 
   -- Advance one voting period to a proposing stage.
-  advanceLevel dodPeriod
+  startLevel <- getOriginationLevel dodDao
+  advanceToLevel (startLevel + dodPeriod)
   key1 <- createSampleProposal 1 proposer dodDao
   -- Advance one voting period to a voting stage.
-  advanceLevel dodPeriod
+  advanceToLevel (startLevel + 2*dodPeriod)
   let vote_ =
         NoPermit VoteParam
           { vVoteType = True
@@ -145,16 +162,17 @@ proposerIsReturnedFeeAfterSucceeding checkBalanceFn = do
     call dodDao (Call @"Vote") [vote_]
 
   let expectedFrozen = 42 + 10
-  checkBalanceFn (unTAddress dodDao) proposer expectedFrozen
+  checkBalance dodDao proposer expectedFrozen
 
   -- Advance one voting period to a proposing stage.
-  advanceLevel $ dodPeriod + 1
+  proposalStart <- getProposalStartLevel dodDao key1
+  advanceToLevel (proposalStart + 2*dodPeriod + 1)
   withSender dodAdmin $ call dodDao (Call @"Flush") 100
 
-  checkBalanceFn (unTAddress dodDao) proposer 52
+  checkBalance dodDao proposer 52
 
 cannotProposeWithInsufficientTokens
-  :: forall caps base m. (MonadNettest caps base m, HasCallStack)
+  :: forall caps base m. (MonadCleveland caps base m, HasCallStack)
   => m ()
 cannotProposeWithInsufficientTokens = do
   DaoOriginateData{..} <-
@@ -162,9 +180,10 @@ cannotProposeWithInsufficientTokens = do
   let proposer = dodOwner1
 
   withSender proposer $
-    call dodDao (Call @"Freeze") (#amount .! 52)
+    call dodDao (Call @"Freeze") (#amount :! 52)
   -- Advance one voting period to a proposing stage.
-  advanceLevel dodPeriod
+  startLevel <- getOriginationLevel dodDao
+  advanceToLevel (startLevel + dodPeriod)
 
   let params = ProposeParams
         { ppFrozenToken = 1
@@ -172,10 +191,10 @@ cannotProposeWithInsufficientTokens = do
         , ppFrom = dodOwner1
         }
   withSender proposer $ call dodDao (Call @"Propose") params
-    & expectCustomError_ #nOT_ENOUGH_FROZEN_TOKENS dodDao
+    & expectFailedWith notEnoughFrozenTokens
 
 rejectProposal
-  :: (MonadNettest caps base m, HasCallStack)
+  :: (MonadCleveland caps base m, HasCallStack)
   => (ConfigDesc Config -> OriginateFn m) -> m ()
 rejectProposal originateFn = do
   DaoOriginateData{..} <- originateFn testConfig defaultQuorumThreshold
@@ -186,56 +205,60 @@ rejectProposal originateFn = do
         }
 
   withSender dodOwner1 $
-    call dodDao (Call @"Freeze") (#amount .! 10)
+    call dodDao (Call @"Freeze") (#amount :! 10)
 
   -- Advance one voting period to a proposing stage.
-  advanceLevel dodPeriod
+  startLevel <- getOriginationLevel dodDao
+  advanceToLevel (startLevel + dodPeriod)
 
   (withSender dodOwner1 $ call dodDao (Call @"Propose") params)
-    & expectCustomError #fAIL_PROPOSAL_CHECK dodDao tooSmallXtzErrMsg
+    & expectFailedWith (failProposalCheck, tooSmallXtzErrMsg)
 
 nonUniqueProposal
-  :: (MonadNettest caps base m, HasCallStack)
+  :: (MonadCleveland caps base m, HasCallStack)
   => (ConfigDesc Config -> OriginateFn m) -> m ()
 nonUniqueProposal originateFn = do
   DaoOriginateData{..} <- originateFn testConfig defaultQuorumThreshold
+  startLevel <- getOriginationLevel dodDao
 
   withSender dodOwner1 $
-    call dodDao (Call @"Freeze") (#amount .! 20)
+    call dodDao (Call @"Freeze") (#amount :! 20)
 
   -- Advance one voting period to a proposing stage.
-  advanceLevel dodPeriod
+  advanceToLevel (startLevel + dodPeriod)
   _ <- createSampleProposal 1 dodOwner1 dodDao
   createSampleProposal 1 dodOwner1 dodDao
-    & expectCustomErrorNoArg #pROPOSAL_NOT_UNIQUE dodDao
+    & expectFailedWith proposalNotUnique
 
 nonUniqueProposalEvenAfterDrop
-  :: (MonadNettest caps base m, HasCallStack)
+  :: (MonadCleveland caps base m, HasCallStack)
   => (ConfigDesc Config -> OriginateFn m) -> m ()
 nonUniqueProposalEvenAfterDrop originateFn = do
   DaoOriginateData{..} <- originateFn testConfig defaultQuorumThreshold
+  startLevel <- getOriginationLevel dodDao
 
   withSender dodOwner1 $
-    call dodDao (Call @"Freeze") (#amount .! 20)
+    call dodDao (Call @"Freeze") (#amount :! 20)
 
   -- Advance one voting period to a proposing stage.
-  advanceLevel dodPeriod
+  advanceToLevel (startLevel + dodPeriod)
   key1 <- createSampleProposal 1 dodOwner1 dodDao
   withSender dodOwner1 $ call dodDao (Call @"Drop_proposal") key1
   createSampleProposal 1 dodOwner1 dodDao
-    & expectCustomErrorNoArg #pROPOSAL_NOT_UNIQUE dodDao
+    & expectFailedWith proposalNotUnique
 
 nonProposalPeriodProposal
-  :: (MonadNettest caps base m, HasCallStack)
+  :: (MonadCleveland caps base m, HasCallStack)
   => (ConfigDesc Config -> OriginateFn m) -> m ()
 nonProposalPeriodProposal originateFn = do
   DaoOriginateData{..} <- originateFn testConfig defaultQuorumThreshold
 
   withSender dodOwner1 $
-    call dodDao (Call @"Freeze") (#amount .! 10)
+    call dodDao (Call @"Freeze") (#amount :! 10)
 
   -- Advance two voting periods to another voting stage.
-  advanceLevel (2 * dodPeriod)
+  startLevel <- getOriginationLevel dodDao
+  advanceToLevel (startLevel + 2 * dodPeriod)
 
   let params = ProposeParams
         { ppFrozenToken = 10
@@ -244,12 +267,12 @@ nonProposalPeriodProposal originateFn = do
         }
 
   withSender dodOwner1 $ call dodDao (Call @"Propose") params
-    & expectCustomErrorNoArg #nOT_PROPOSING_STAGE dodDao
+    & expectFailedWith notProposingStage
 
 burnsFeeOnFailure
-  :: forall caps base m. (MonadNettest caps base m)
-  => FailureReason -> CheckBalanceFn m -> m ()
-burnsFeeOnFailure reason checkBalanceFn = do
+  :: forall caps base m. (MonadCleveland caps base m)
+  => FailureReason -> m ()
+burnsFeeOnFailure reason = do
   DaoOriginateData{..} <-
       originateLigoDaoWithConfigDesc dynRecUnsafe
         (   (ConfigDesc $ Period 60)
@@ -261,20 +284,22 @@ burnsFeeOnFailure reason checkBalanceFn = do
   let voter = dodOwner2
 
   withSender proposer $
-    call dodDao (Call @"Freeze") (#amount .! 42)
+    call dodDao (Call @"Freeze") (#amount :! 42)
 
   withSender voter $
-    call dodDao (Call @"Freeze") (#amount .! 1)
+    call dodDao (Call @"Freeze") (#amount :! 1)
 
   withSender proposer $
-    call dodDao (Call @"Freeze") (#amount .! 10)
+    call dodDao (Call @"Freeze") (#amount :! 10)
+
+  startLevel <- getOriginationLevel dodDao
 
   -- Advance one voting period to a proposing stage.
-  advanceLevel dodPeriod
+  advanceToLevel (startLevel + dodPeriod)
   key1 <- createSampleProposal 1 proposer dodDao
 
   -- Advance one voting period to a voting stage.
-  advanceLevel dodPeriod
+  advanceToLevel (startLevel + 2*dodPeriod)
   case reason of
     Downvoted -> do
       withSender voter $
@@ -282,23 +307,22 @@ burnsFeeOnFailure reason checkBalanceFn = do
     QuorumNotMet -> return ()
 
   let expectedFrozen = 42 + 10
-  checkBalanceFn (unTAddress dodDao) proposer expectedFrozen
+  checkBalance dodDao proposer expectedFrozen
 
-  -- Advance one voting period to a proposing stage.
-  advanceLevel (dodPeriod+1)
+  proposalStart <- getProposalStartLevel dodDao key1
+  advanceToLevel (proposalStart + 2*dodPeriod)
   withSender dodAdmin $ call dodDao (Call @"Flush") 100
 
   -- Tokens frozen with the proposal are returned as unstaked (but still
   -- frozen), except for the fee and slash amount. The latter is zero in this
   -- case, so we expect 42 tokens to be burnt
   let expectedBurn = 42
-  checkBalanceFn (unTAddress dodDao) proposer (52 - expectedBurn)
+  checkBalance dodDao proposer (52 - expectedBurn)
 
 unstakesTokensForMultipleVotes
-  :: forall caps base m. (MonadNettest caps base m)
-  => GetFreezeHistoryFn m
-  -> m ()
-unstakesTokensForMultipleVotes getFhFn = do
+  :: forall caps base m. (MonadCleveland caps base m)
+  => m ()
+unstakesTokensForMultipleVotes = do
   DaoOriginateData{..} <-
       originateLigoDaoWithConfigDesc dynRecUnsafe
         (   (ConfigDesc $ Period 60)
@@ -310,17 +334,18 @@ unstakesTokensForMultipleVotes getFhFn = do
   let voter = dodOwner2
 
   withSender proposer $
-    call dodDao (Call @"Freeze") (#amount .! 52)
+    call dodDao (Call @"Freeze") (#amount :! 52)
 
   withSender voter $
-    call dodDao (Call @"Freeze") (#amount .! 30)
+    call dodDao (Call @"Freeze") (#amount :! 30)
 
   -- Advance one voting period to a proposing stage.
-  advanceLevel dodPeriod
+  startLevel <- getOriginationLevel dodDao
+  advanceToLevel (startLevel + dodPeriod)
   key1 <- createSampleProposal 1 proposer dodDao
 
   -- Advance one voting period to a voting stage.
-  advanceLevel dodPeriod
+  advanceToLevel (startLevel + 2*dodPeriod)
   let vote_ typ =
         NoPermit VoteParam
           { vVoteType = typ
@@ -334,7 +359,7 @@ unstakesTokensForMultipleVotes getFhFn = do
     call dodDao (Call @"Vote") [vote_ False]
     return ()
 
-  fh <- getFhFn (unTAddress dodDao) voter
+  fh <- getFreezeHistory dodDao voter
   let expected = Just (AddressFreezeHistory
         { fhCurrentUnstaked = 0
         , fhPastUnstaked = 10
@@ -344,9 +369,12 @@ unstakesTokensForMultipleVotes getFhFn = do
   assert (fh == expected) "Unexpected freeze history after voting"
 
   -- Advance one voting period to a proposing stage.
-  advanceLevel (dodPeriod+1)
+  proposalStart <- getProposalStartLevel dodDao key1
+  advanceToLevel (proposalStart + 2*dodPeriod + 1)
   withSender dodAdmin $ call dodDao (Call @"Flush") 100
-  fh_after_flush <- getFhFn (unTAddress dodDao) voter
+  withSender voter $ call dodDao (Call @"Unstake_vote") [key1]
+
+  fh_after_flush <- getFreezeHistory dodDao voter
   let expected_after_flush = Just (AddressFreezeHistory
         { fhCurrentUnstaked = 0
         , fhPastUnstaked = 30
@@ -356,7 +384,7 @@ unstakesTokensForMultipleVotes getFhFn = do
   assert (fh_after_flush == expected_after_flush) "Unexpected freeze history after flush"
 
 insufficientTokenProposal
-  :: (MonadNettest caps base m, HasCallStack)
+  :: (MonadCleveland caps base m, HasCallStack)
   => (ConfigDesc Config -> OriginateFn m) -> (Address -> m Int) -> m ()
 insufficientTokenProposal originateFn getProposalAmountFn = do
   DaoOriginateData{..} <- originateFn testConfig defaultQuorumThreshold
@@ -367,23 +395,24 @@ insufficientTokenProposal originateFn getProposalAmountFn = do
         }
 
   withSender dodOwner1 $ call dodDao (Call @"Propose") params
-    & expectCustomError_ #nOT_ENOUGH_FROZEN_TOKENS dodDao
+    & expectFailedWith notEnoughFrozenTokens
   amt <- getProposalAmountFn (unTAddress dodDao)
   amt @== 0
 
 insufficientTokenVote
-  :: (MonadNettest caps base m, HasCallStack)
+  :: (MonadCleveland caps base m, HasCallStack)
   => (ConfigDesc Config -> OriginateFn m) -> m ()
 insufficientTokenVote originateFn = do
   DaoOriginateData{..} <- originateFn voteConfig defaultQuorumThreshold
   withSender dodOwner2 $
-    call dodDao (Call @"Freeze") (#amount .! 100)
+    call dodDao (Call @"Freeze") (#amount :! 100)
 
   withSender dodOwner1 $
-    call dodDao (Call @"Freeze") (#amount .! 10)
+    call dodDao (Call @"Freeze") (#amount :! 10)
 
   -- Advance one voting period to a proposing stage.
-  advanceLevel dodPeriod
+  startLevel <- getOriginationLevel dodDao
+  advanceToLevel (startLevel + dodPeriod)
 
   -- Create sample proposal
   key1 <- createSampleProposal 1 dodOwner1 dodDao
@@ -402,36 +431,37 @@ insufficientTokenVote originateFn = do
             }
         ]
   -- Advance one voting period to a voting stage.
-  advanceLevel dodPeriod
+  advanceToLevel (startLevel + 2*dodPeriod)
 
   withSender dodOwner2 $ call dodDao (Call @"Vote") params
-    & expectCustomError_ #nOT_ENOUGH_FROZEN_TOKENS dodDao
+    & expectFailedWith notEnoughFrozenTokens
 
 dropProposal
-  :: (MonadNettest caps base m, HasCallStack)
-  => (ConfigDesc Config -> OriginateFn m) -> CheckBalanceFn m -> m ()
-dropProposal originateFn checkBalanceFn = withFrozenCallStack $ do
+  :: (MonadCleveland caps base m, HasCallStack)
+  => (ConfigDesc Config -> OriginateFn m) -> m ()
+dropProposal originateFn = withFrozenCallStack $ do
   DaoOriginateData{..} <-
     originateFn
      (testConfig
-       >>- (ConfigDesc (Period 20))
        >>- (ConfigDesc configConsts{ cmProposalFlushTime = Just 40 })
-       >>- (ConfigDesc configConsts{ cmProposalExpiredTime = Just 60 })
+       >>- (ConfigDesc configConsts{ cmProposalExpiredTime = Just 50 })
       ) (mkQuorumThreshold 1 50)
 
+  startLevel <- getOriginationLevel dodDao
+
   withSender dodOwner1 $
-    call dodDao (Call @"Freeze") (#amount .! 30)
+    call dodDao (Call @"Freeze") (#amount :! 30)
 
   withSender dodOwner2 $
-    call dodDao (Call @"Freeze") (#amount .! 20)
+    call dodDao (Call @"Freeze") (#amount :! 20)
 
   -- Advance one voting period to a proposing stage.
-  advanceLevel dodPeriod
+  advanceToLevel (startLevel + dodPeriod)
 
   (key1, key2) <- createSampleProposals (1, 2) dodOwner1 dodDao
 
   -- Advance one voting period to a voting stage.
-  advanceLevel dodPeriod
+  advanceToLevel (startLevel + 2*dodPeriod)
   let params key = NoPermit VoteParam
         { vVoteType = True
         , vVoteAmount = 20
@@ -440,20 +470,22 @@ dropProposal originateFn checkBalanceFn = withFrozenCallStack $ do
         }
   withSender dodOwner2 $ call dodDao (Call @"Vote") [params key1]
   -- Advance one voting period to a proposing stage.
-  advanceLevel dodPeriod
+  advanceToLevel (startLevel + 3*dodPeriod)
 
   key3 <- createSampleProposal 3 dodOwner1 dodDao
+  proposalStart2 <- getProposalStartLevel dodDao key2
+  proposalStart3 <- getProposalStartLevel dodDao key3
 
   -- `guardian` contract can drop any proposal.
   withSender dodOwner2 $ do
     call dodGuardian CallDefault (unTAddress dodDao, key1)
 
-  -- `key2` is not yet expired since it has to be more than 60 seconds
+  -- `key2` is not yet expired since it has to be more than 60
   withSender dodOwner2 $ do
     call dodDao (Call @"Drop_proposal") key2
-      & expectCustomErrorNoArg #dROP_PROPOSAL_CONDITION_NOT_MET dodDao
+      & expectFailedWith dropProposalConditionNotMet
 
-  advanceLevel (dodPeriod + 1)
+  advanceToLevel (proposalStart2 + 50)
   -- `key2` is expired, so it is possible to `drop_proposal`
   withSender dodOwner2 $ do
     call dodDao (Call @"Drop_proposal") key2
@@ -461,8 +493,9 @@ dropProposal originateFn checkBalanceFn = withFrozenCallStack $ do
   -- `key3` is not yet expired
   withSender dodOwner2 $ do
     call dodDao (Call @"Drop_proposal") key3
-      & expectCustomErrorNoArg #dROP_PROPOSAL_CONDITION_NOT_MET dodDao
+      & expectFailedWith dropProposalConditionNotMet
 
+  advanceToLevel (proposalStart3 + 50)
   -- proposers can delete their proposal
   withSender dodOwner1 $ do
     call dodDao (Call @"Drop_proposal") key3
@@ -470,13 +503,14 @@ dropProposal originateFn checkBalanceFn = withFrozenCallStack $ do
   -- calling drop proposal again results in an error
   withSender dodOwner1 $ do
     call dodDao (Call @"Drop_proposal") key3
-      & expectCustomErrorNoArg #pROPOSAL_NOT_EXIST dodDao
+      & expectFailedWith proposalNotExist
 
   -- 30 tokens are frozen in total, but only 15 tokens are returned after drop_proposal
-  checkBalanceFn (unTAddress dodDao) dodOwner1 15
+  checkBalance dodDao dodOwner1 15
+
 
 proposalBoundedValue
-  :: (MonadNettest caps base m, HasCallStack)
+  :: (MonadCleveland caps base m, HasCallStack)
   => (ConfigDesc Config -> OriginateFn m) -> m ()
 proposalBoundedValue originateFn = do
   DaoOriginateData{..} <- originateFn
@@ -485,10 +519,11 @@ proposalBoundedValue originateFn = do
     ) defaultQuorumThreshold
 
   withSender dodOwner1 $
-    call dodDao (Call @"Freeze") (#amount .! 20)
+    call dodDao (Call @"Freeze") (#amount :! 20)
 
   -- Advance one voting period to a proposing stage.
-  advanceLevel dodPeriod
+  startLevel <- getOriginationLevel dodDao
+  advanceToLevel (startLevel + dodPeriod)
 
   let params = ProposeParams
         { ppFrozenToken = 10
@@ -499,5 +534,99 @@ proposalBoundedValue originateFn = do
   withSender dodOwner1 $ do
     call dodDao (Call @"Propose") params
     call dodDao (Call @"Propose") params
-      & expectCustomErrorNoArg #mAX_PROPOSALS_REACHED dodDao
+      & expectFailedWith maxProposalsReached
+
+
+unstakeVote
+  :: (MonadCleveland caps base m, HasCallStack)
+  => (ConfigDesc Config -> OriginateFn m)
+  -> m ()
+unstakeVote originateFn = do
+  let flushLevel = 20
+  DaoOriginateData{..}
+    <- originateFn (testConfig
+        >>- (ConfigDesc configConsts{ cmProposalFlushTime = Just flushLevel })
+        >>- (ConfigDesc configConsts{ cmProposalExpiredTime = Just 50 })
+        ) defaultQuorumThreshold
+
+  -- [Voting]
+  withSender dodOwner1 $
+    call dodDao (Call @"Freeze") (#amount :! 30)
+
+  withSender dodOwner2 $
+    call dodDao (Call @"Freeze") (#amount :! 10)
+
+  startLevel <- getOriginationLevel dodDao
+  advanceToLevel (startLevel + dodPeriod)
+
+  -- [Proposing]
+  key1 <- createSampleProposal 1 dodOwner1 dodDao
+  advanceLevel 1
+  key2 <- createSampleProposal 2 dodOwner1 dodDao
+
+  let vote' key = NoPermit VoteParam
+        { vFrom = dodOwner2
+        , vVoteType = True
+        , vVoteAmount = 5
+        , vProposalKey = key
+        }
+
+  -- Advance to a level where vote can be called
+  advanceToLevel (startLevel + 2 * dodPeriod)
+
+  -- [Voting]
+  withSender dodOwner2 . inBatch $ do
+      call dodDao (Call @"Vote") [vote' key1]
+      call dodDao (Call @"Vote") [vote' key2]
+      pure ()
+
+  -- Advance to a level where flush can be called
+  proposalStart <- getProposalStartLevel dodDao key1
+  advanceToLevel (proposalStart + (flushLevel + 1))
+
+  -- [Proposing]
+  withSender dodAdmin $ call dodDao (Call @"Flush") 1
+
+  -- Freeze history before `Unstake_vote`
+  fhOwner2 <- getFreezeHistory dodDao dodOwner2
+  (fhOwner2 <&> fhStaked) @== Just 10
+  (fhOwner2 <&> fhPastUnstaked) @== Just 0
+  (fhOwner2 <&> fhCurrentUnstaked) @== Just 0
+
+  -- Call succeeds.
+  withSender dodOwner2 $ call dodDao (Call @"Unstake_vote") [key1]
+
+  -- Freeze history after `Unstake_vote`
+  fhOwner2_ <- getFreezeHistory dodDao dodOwner2
+  (fhOwner2_ <&> fhStaked) @== Just 5 -- Still staked since `key2` is not yet flush.
+  (fhOwner2_ <&> fhPastUnstaked) @== Just 5
+  (fhOwner2_ <&> fhCurrentUnstaked) @== Just 0
+
+  -- Trigger error since the tokens are already unstaked.
+  withSender dodOwner2 $ call dodDao (Call @"Unstake_vote") [key1]
+    & expectFailedWith voterDoesNotExist
+
+  -- Proposal key2 is not yet flush.
+  withSender dodOwner2 $ call dodDao (Call @"Unstake_vote") [key2]
+    & expectFailedWith unstakeInvalidProposal
+
+  -- owner 1 does not vote on the proposal
+  withSender dodOwner1 $ call dodDao (Call @"Unstake_vote") [key1]
+    & expectFailedWith voterDoesNotExist
+
+  --------------------------------------
+  -- Unstake_vote on dropped proposal
+  --------------------------------------
+  withSender dodOwner1 $ do
+    call dodDao (Call @"Drop_proposal") key2
+
+  advanceToLevel (startLevel + 4 * dodPeriod)
+  -- Call succeeds.
+  withSender dodOwner2 $ call dodDao (Call @"Unstake_vote") [key2]
+
+  -- Freeze history after `Unstake_vote`
+  fhOwner2__ <- getFreezeHistory dodDao dodOwner2
+  (fhOwner2__ <&> fhStaked) @== Just 0
+  (fhOwner2__ <&> fhPastUnstaked) @== Just 10
+  (fhOwner2__ <&> fhCurrentUnstaked) @== Just 0
 

@@ -1,23 +1,22 @@
 // SPDX-FileCopyrightText: 2021 TQ Tezos
 // SPDX-License-Identifier: LicenseRef-MIT-TQ
 
-// Corresponds to BaseDAO.hs module
-
 #include "management.mligo"
 #include "permit.mligo"
 #include "proposal.mligo"
 #include "defaults.mligo"
 #include "token.mligo"
+#include "error_codes.mligo"
 
 (*
- * Entrypoints that require the no xtz to be sent.
+ * Entrypoints that require no xtz to be sent.
  * This checks for such xtz condition.
  *)
 let requiring_no_xtz (param, store, config : forbid_xtz_params * storage * config)
     : operation list * storage =
   // check for no xtz
   if Tezos.amount > 0tez then
-    (failwith("FORBIDDEN_XTZ") : return)
+    (failwith forbidden_xtz : return)
   else
     match param with
     | Drop_proposal (p)      -> drop_proposal(p, config, store)
@@ -26,7 +25,7 @@ let requiring_no_xtz (param, store, config : forbid_xtz_params * storage * confi
     | Freeze p               -> freeze(p, config, store)
     | Unfreeze p             -> unfreeze(p, config, store)
     | Update_delegate p      -> update_delegates(p, store)
-
+    | Unstake_vote p         -> unstake_vote(p, config, store)
 
 (*
  * Entrypoints that allow xtz to be sent.
@@ -38,10 +37,11 @@ let allowing_xtz (param, store, config : allow_xtz_params * storage * config) =
   | Transfer_contract_tokens p -> transfer_contract_tokens(p, store)
   | Transfer_ownership (p)     -> transfer_ownership(p, store)
   | Accept_ownership           -> accept_ownership(store)
+  | Default _                  -> (([] : operation list), store)
 
 (*
- * The actual DAO contract, which in this version is the same independently from
- * the DAO logic.
+ * The actual DAO contract, which is the same, regardless of the specific DAO
+ * logic included.
  *)
 let base_DAO_contract (param, full_store : parameter * full_storage)
     : operation list * full_storage =

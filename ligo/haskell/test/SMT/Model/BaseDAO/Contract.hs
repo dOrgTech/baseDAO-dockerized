@@ -34,9 +34,11 @@ handleCallViaHaskell mc ms =
         XtzAllowed (Transfer_ownership p) -> applyTransferOwnership (mc & mcSource) p
         XtzAllowed (Accept_ownership _) -> applyAcceptOwnership (mc & mcSource)
         XtzAllowed (CallCustom p) -> applyCallCustom (mc & mcSource) p
+        XtzAllowed (Default _) -> pure ()
         XtzForbidden (Vote p) -> applyVote (mc & mcSource) p
         XtzForbidden (Flush p) -> applyFlush (mc & mcSource) p
         XtzForbidden (Freeze p) -> applyFreeze (mc & mcSource) p
         XtzForbidden (Unfreeze p) -> applyUnfreeze (mc & mcSource) p
         XtzForbidden (Update_delegate p) -> applyUpdateDelegate (mc & mcSource) p
         XtzForbidden (Drop_proposal p) -> applyDropProposal (mc & mcSource) p
+        XtzForbidden (Unstake_vote p) -> applyUnstakeVote (mc & mcSource) p

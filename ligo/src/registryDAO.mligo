@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2021 TQ Tezos
 // SPDX-License-Identifier: LicenseRef-MIT-TQ
 
+#include "error_codes.mligo"
 #include "common/errors.mligo"
 #include "common/types.mligo"
 #include "defaults.mligo"
@@ -86,9 +87,10 @@ let registry_DAO_proposal_check (params, extras : propose_params * contract_extr
   | Update_receivers_proposal _urp -> unit
   | Configuration_proposal _cp -> unit
   | Update_guardian _guardian -> unit
+  | Update_contract_delegate _ -> unit
 
 (*
- * Proposal rejection return lambda: returns `slash_scale_value * frozen / slash_division_value`
+ * Proposal rejection slash lambda: returns `slash_scale_value * frozen / slash_division_value`
  * where slash_scale_value and slash_division_value are specified by the DAO creator
  * in configuration and frozen is the amount that was frozen by the proposer.
  *)
@@ -111,14 +113,14 @@ let handle_transfer (ops, transfer_type : (operation list) * transfer_type) : (o
           : transfer_params contract option) with
       | Some contract ->
           (Tezos.transaction tt.transfer_list 0mutez contract) :: ops
-      | None -> (failwith("FAIL_DECISION_LAMBDA") : operation list)
+      | None -> (failwith fail_decision_lambda : operation list)
     end
   | Xtz_transfer_type xt ->
     begin
       match (Tezos.get_contract_opt xt.recipient : unit contract option) with
       | Some contract ->
           (Tezos.transaction unit xt.amount contract) :: ops
-      | None -> (failwith("FAIL_DECISION_LAMBDA") : operation list)
+      | None -> (failwith fail_decision_lambda : operation list)
     end
 
 (*
@@ -128,13 +130,13 @@ let handle_transfer (ops, transfer_type : (operation list) * transfer_type) : (o
  * proposal.
  *
  * For 'normal' proposals, the contract_extra is expected to contain the bigmap
- * for registry and bigmap for key update tracking under keys 'registry' and
- * 'registry_affected' keys.
+ * for registry and bigmap for key update tracking under keys `registry` and
+ * `registry_affected`.
  *
  * For 'configuration' proposal, the code expects all the configuration keys
  * included in the proposal (or it throws an error). The expected keys are
- * "frozen_scale_value", "frozen_extra_value", "max_proposal_size", "slash_scale_value"
- * and "slash_division_value". 'None' values are ignored and 'Some' values are
+ * `frozen_scale_value`, `frozen_extra_value`, `max_proposal_size`, `slash_scale_value`
+ * and `slash_division_value`. `None` values are ignored and `Some` values are
  * used for updating corresponding configuraton.
  *)
 let registry_DAO_decision_lambda (input : decision_lambda_input)
@@ -197,11 +199,8 @@ let registry_DAO_decision_lambda (input : decision_lambda_input)
       { operations = ops; extras = extras; guardian = (None : (address option)) }
   | Update_guardian guardian ->
       { operations = ops; extras = extras ; guardian = Some(guardian) }
-
-// A custom entrypoint needed to receive xtz, since most `basedao` entrypoints
-// prohibit non-zero xtz transfer.
-let receive_xtz_entrypoint (_params, full_store : bytes * full_storage) : return =
-  (([]: operation list), full_store.0)
+  | Update_contract_delegate mdelegate ->
+      { operations = ((Tezos.set_delegate mdelegate) :: ops); extras = extras ; guardian = (None : (address option))}
 
 // A custom entrypoint to fetch values from Registry
 let lookup_registry (bytes_param, full_store : bytes * full_storage) : operation list * storage =
@@ -209,7 +208,7 @@ let lookup_registry (bytes_param, full_store : bytes * full_storage) : operation
   let view_contract : lookup_registry_view =
       match (Tezos.get_contract_opt(param.callback) : lookup_registry_view option) with
       | Some callback_contract -> callback_contract
-      | None -> (failwith "BAD_VIEW_CONTRACT": lookup_registry_view) in
+      | None -> (failwith bad_view_contract: lookup_registry_view) in
   let contract_extra = full_store.0.extra in
   let registry : registry = unpack_registry(find_big_map("registry", contract_extra)) in
   let value_at_key : registry_value option = Big_map.find_opt param.key registry in
@@ -238,7 +237,6 @@ let default_registry_DAO_full_storage (data : initial_registryDAO_storage) : ful
     decision_lambda = registry_DAO_decision_lambda;
     custom_entrypoints = Big_map.literal
       [ "lookup_registry", Bytes.pack lookup_registry
-      ; "receive_xtz", Bytes.pack receive_xtz_entrypoint
       ];
     } in
   (new_storage, new_config)
@@ -251,6 +249,6 @@ let successful_proposal_receiver_view (full_storage : full_storage): proposal_re
       begin
         match (Bytes.unpack packed_b : proposal_receivers option) with
         | Some r -> r
-        | None -> ((failwith "Unpacking failed") : proposal_receivers)
+        | None -> ((failwith unpacking_failed) : proposal_receivers)
       end
   | None -> (failwith "'proposal_receivers' key not found" : proposal_receivers)

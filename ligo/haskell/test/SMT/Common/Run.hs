@@ -8,24 +8,25 @@ module SMT.Common.Run
 import Universum hiding (drop, swap)
 
 import qualified Data.Map as Map
-import Data.Sequence (Seq(..))
-import Fmt (pretty, build, unlinesF)
+import Fmt (build, pretty, unlinesF)
 import Hedgehog hiding (assert)
 
-import Lorentz hiding ((>>), assert, now)
+import Lorentz hiding (assert, now, (>>))
 import qualified Lorentz.Contracts.Spec.FA2Interface as FA2
-import Lorentz.Test.Consumer (contractConsumer)
-import Morley.Nettest
 import qualified Morley.Micheline as MM
-import Morley.Nettest.Pure
+import Morley.Michelson.Runtime.Dummy (dummyLevel)
+import qualified Morley.Michelson.Typed as T
+import qualified Morley.Michelson.Untyped as U
+import Test.Cleveland
+import Test.Cleveland.Internal.Abstract (ExpressionOrTypedValue(..), TransferFailure(..))
+import Test.Cleveland.Lorentz (contractConsumer)
 
 import Ligo.BaseDAO.Contract
 import Ligo.BaseDAO.Types
-import SMT.Model.BaseDAO.Contract
-import SMT.Model.BaseDAO.Types
 import SMT.Common.Gen
 import SMT.Common.Types
-import Test.Ligo.BaseDAO.Common.StorageHelper as StorageHelper
+import SMT.Model.BaseDAO.Contract
+import SMT.Model.BaseDAO.Types
 import Test.Ligo.BaseDAO.Common
 
 -- | The functions run the generator to get a list of entrypoints
@@ -42,12 +43,12 @@ runBaseDaoSMT option@SmtOption{..} = do
   -- Run the generator to get a function that will generate a list of entrypoint calls.
   mkModelInput <- forAll (runGeneratorT (genMkModelInput option) $ initGeneratorState soMkPropose)
 
-  nettestTestProp $
-    (uncapsNettestEmulated $ do
+  testScenarioProps $
+    (scenarioEmulated $ do
         -- Originate auxiliary contracts
-        guardianContract <- originateSimple "guardian" () dummyGuardianContract
-        tokenContract <- originateSimple "TokenContract" [] dummyFA2Contract
-        registryDaoConsumer <- originateSimple "registryDaoConsumer" []
+        guardianContract <- (TAddress . toAddress) <$> originateSimple "guardian" () dummyGuardianContract
+        tokenContract <- (TAddress . toAddress) <$> originateSimple "TokenContract" [] dummyFA2Contract
+        registryDaoConsumer <- (TAddress . toAddress) <$> originateSimple "registryDaoConsumer" []
           (contractConsumer @(MText, (Maybe MText))) -- Used in registry dao.
 
         -- Generate a list of entrypoint calls
@@ -57,20 +58,27 @@ runBaseDaoSMT option@SmtOption{..} = do
               , miaViewContractAddr = registryDaoConsumer
               }
 
+        -- Sync current level to start level in contract initial storage
+        -- as well as in the model state
+        let currentLevel = (dummyLevel + (ms & msLevel))
+
+        let fullStorage = msFullStorage ms
+        let storage = (fsStorage fullStorage) { sStartLevel = currentLevel }
+
         -- Set initial level for the Nettest
-        advanceLevel (ms & msLevel)
+        advanceToLevel currentLevel
 
         -- Modify `FullStorage` from the generator with registry/treasury configuration.
-        let newMs = ms { msFullStorage = soModifyFs (ms & msFullStorage) }
+        let newMs = ms { msLevel = currentLevel, msFullStorage = soModifyFs (fullStorage { fsStorage = storage }) }
 
         -- Originate Dao for Nettest
-        dao <- originateTypedSimple "BaseDAO" (newMs & msFullStorage) baseDAOContractLigo
+        dao <- originateTypedSimple @Parameter "BaseDAO" (newMs & msFullStorage) baseDAOContractLigo
 
         -- Send some mutez to registry/treasury dao since they can run out of mutez
         newBal <-
           if (soContractType == RegistryDaoContract || soContractType == TreasuryDaoContract) then do
             let bal = toMutez 500
-            sendXtzWithAmount bal dao (ep "callCustom") ([mt|receive_xtz|], lPackValueRaw ())
+            sendXtzWithAmount bal (TAddress $ chAddress dao)
             pure bal
           else pure (toMutez 0)
 
@@ -83,13 +91,13 @@ runBaseDaoSMT option@SmtOption{..} = do
                   , ((unTAddress registryDaoConsumer), OtherContractType $ OtherContract [] (toMutez 0))
                   ]
               , msMutez = newBal
+              , msLevel = currentLevel
               }
 
         -- Call ligo dao and run haskell model then compare the results.
-        handleCallLoop (dao, tokenContract, registryDaoConsumer) contractCalls newMs_
+        handleCallLoop (TAddress $ chAddress dao, tokenContract, registryDaoConsumer) contractCalls newMs_
 
     )
-    emulatedImplIntegrational
 
 -- | For each generated entrypoint calls, this function does 3 things:
 -- 1. Run haskell model against the call.
@@ -216,7 +224,7 @@ handleCallViaLigo (dao, gov, viewC) mc = do
     Just lvl -> advanceLevel lvl
     Nothing -> pure ()
 
-  nettestResult <- attempt @NettestFailure $ callLigoEntrypoint mc dao
+  nettestResult <- attempt @TransferFailure $ callLigoEntrypoint mc dao
   let result = parseNettestError nettestResult
   fs <- getFullStorage (unTAddress dao)
   let fsE = case result of
@@ -225,19 +233,20 @@ handleCallViaLigo (dao, gov, viewC) mc = do
 
   daoBalance <- getBalance dao
 
-  govStore <- fromVal @[FA2.TransferParams] <$> getStorage' @(ToT [FA2.TransferParams]) gov
+  govStore <- getFullStorage @([FA2.TransferParams]) (unTAddress gov)
   govBalance <- getBalance gov
 
-  viewStorage <- fromVal @[(MText, Maybe MText)] <$> getStorage' @(ToT [(MText, Maybe MText)]) viewC
+  viewStorage <- getFullStorage @([(MText, Maybe MText)]) (unTAddress viewC)
   pure (fsE, daoBalance, govStore, govBalance, show <$> viewStorage)
 
 
-callLigoEntrypoint :: MonadNettest caps base m => ModelCall -> TAddress Parameter -> m ()
+callLigoEntrypoint :: MonadCleveland caps base m => ModelCall -> TAddress Parameter -> m ()
 callLigoEntrypoint mc dao = withSender (mc & mcSource & msoSender) $ case mc & mcParameter of
   XtzAllowed (Propose p) -> call dao (Call @"Propose") p
   XtzAllowed (Transfer_contract_tokens p) -> call dao (Call @"Transfer_contract_tokens") p
   XtzAllowed (Transfer_ownership p) -> call dao (Call @"Transfer_ownership") p
   XtzAllowed (Accept_ownership p) -> call dao (Call @"Accept_ownership") p
+  XtzAllowed (Default _) -> call dao CallDefault ()
 
   XtzForbidden (Vote p) -> call dao (Call @"Vote") p
   XtzForbidden (Flush p) -> call dao (Call @"Flush") p
@@ -245,17 +254,22 @@ callLigoEntrypoint mc dao = withSender (mc & mcSource & msoSender) $ case mc & m
   XtzForbidden (Unfreeze p) -> call dao (Call @"Unfreeze") p
   XtzForbidden (Update_delegate p) -> call dao (Call @"Update_delegate") p
   XtzForbidden (Drop_proposal p) -> call dao (Call @"Drop_proposal") p
+  XtzForbidden (Unstake_vote p) -> call dao (Call @"Unstake_vote") p
 
   XtzAllowed (CallCustom p) -> call dao (Call @"CallCustom") p
 
 
 -- TODO: Use `fromExpression` instead when new morley version is updated.
--- More detail: https://github.com/tqtezos/baseDAO/pull/282#discussion_r669572842
-parseNettestError :: Either NettestFailure a -> Maybe ModelError
+-- More detail: https://github.com/tezos-commons/baseDAO/pull/282#discussion_r669572842
+parseNettestError :: Either TransferFailure a -> Maybe ModelError
 parseNettestError = \case
   Right _ -> Nothing
-  Left (NettestFailedWith _ (MM.ExpressionString tval)) ->
-    Just $ contractErrorToModelError tval
-  Left (NettestFailedWith _ (MM.ExpressionPrim (MM.MichelinePrimAp (MM.MichelinePrimitive "Pair") (MM.ExpressionString tval :<| _) _))) ->
-    Just $ contractErrorToModelError tval
+  Left (FailedWith _ (EOTVExpression expr)) -> case MM.fromExpression @U.Value expr of
+    Right (U.ValueInt err) -> Just $ contractErrorToModelError err
+    Right (U.ValuePair (U.ValueInt err) _) -> Just $ contractErrorToModelError err
+    err -> error $ "Unexpected error:" <> show err
+  Left (FailedWith _ (EOTVTypedValue (T.VNat tval))) ->
+    Just $ contractErrorToModelError $ toInteger tval
+  Left (FailedWith _ (EOTVTypedValue (T.VPair (T.VNat tval, _)))) ->
+    Just $ contractErrorToModelError $ toInteger tval
   Left err -> error $ "Unexpected error:" <> show err

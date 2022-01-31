@@ -13,17 +13,17 @@ import qualified Data.Set as Set
 import Hedgehog
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
-import Named (NamedF(..))
 
-import Lorentz hiding (now, (>>), and)
-import Michelson.Text (unsafeMkMText)
-import qualified Michelson.Typed as T
+import Morley.Michelson.Typed.Haskell.Value (BigMap(..))
 import Hedgehog.Gen.Michelson (genMText)
 import Hedgehog.Gen.Tezos.Address (genAddress)
+import Lorentz hiding (and, div, now, (>>))
+import Morley.Michelson.Text (unsafeMkMText)
+import Morley.Util.Named
 
 import Ligo.BaseDAO.Common.Types
+import Ligo.BaseDAO.Contract (baseDAORegistryStorageLigo)
 import Ligo.BaseDAO.Types
-import Ligo.Util
 import SMT.Common.Gen
 import SMT.Common.Helper
 import SMT.Common.Run
@@ -36,7 +36,7 @@ import Test.Ligo.RegistryDAO.Types
 hprop_RegistryDaoSMT :: Property
 hprop_RegistryDaoSMT =
   let
-    registryFs = fromVal ($(fetchValue @FullStorage "haskell/test/registryDAO_storage.tz" "REGISTRY_STORAGE_PATH"))
+    registryFs = #registryFs :! baseDAORegistryStorageLigo
     option = SmtOption
       { soMkPropose = genProposeRegistryDao
       , soMkCustomCalls = genCustomCallsRegistryDao
@@ -47,8 +47,7 @@ hprop_RegistryDaoSMT =
       , soRejectedProposalSlashValue = registryDaoRejectedProposalSlashValue
       , soDecisionLambda = registryDaoDecisionLambda
       , soCustomEps = Map.fromList
-          [ ( unsafeMkMText "receive_xtz", \_ -> pure () )
-          , ( unsafeMkMText "lookup_registry", lookupRegistryEntrypoint)
+          [ ( unsafeMkMText "lookup_registry", lookupRegistryEntrypoint)
           ]
       }
   in
@@ -111,7 +110,7 @@ registryDaoProposalCheck (params, extras) = do
     Update_receivers_proposal _ -> pure ()
     Configuration_proposal _ -> pure ()
     Update_guardian _ -> pure ()
-
+    Update_contract_delegate _ -> pure ()
 
 registryDaoRejectedProposalSlashValue :: (Proposal, ContractExtra) -> ModelT Natural
 registryDaoRejectedProposalSlashValue (p, extras) = do
@@ -120,7 +119,7 @@ registryDaoRejectedProposalSlashValue (p, extras) = do
 
   pure $ (slashScaleValue * (p & plProposerFrozenToken) `div` slashDivisionValue)
 
-registryDaoDecisionLambda :: DecisionLambdaInput BigMap -> ModelT ([SimpleOperation], ContractExtra, Maybe Address)
+registryDaoDecisionLambda :: DecisionLambdaInput -> ModelT ([SimpleOperation], ContractExtra, Maybe Address)
 registryDaoDecisionLambda DecisionLambdaInput{..} = do
   let metadata = (diProposal & plMetadata)
         & lUnpackValueRaw @RegistryDaoProposalMetadata
@@ -136,10 +135,10 @@ registryDaoDecisionLambda DecisionLambdaInput{..} = do
               foldl' (\cSet addr -> Set.insert addr cSet) currentSet receivers
             Remove_receivers receivers ->
               foldl' (\cSet addr -> Set.delete addr cSet) currentSet receivers
-          newExtra = Map.insert "proposal_receivers" (lPackValueRaw @(Set Address) updatedReceivers) (T.unBigMap $ unDynamic diExtra)
-      pure ([], DynamicRec' $ BigMap $ newExtra, Nothing)
+          newExtra = Map.insert "proposal_receivers" (lPackValueRaw @(Set Address) updatedReceivers) (bmMap $ unDynamic diExtra)
+      pure ([], DynamicRec' $ BigMap Nothing $ newExtra, Nothing)
     Configuration_proposal cp -> do
-      let newExtras = (T.unBigMap $ unDynamic diExtra)
+      let newExtras = (bmMap $ unDynamic diExtra)
             & (\ce -> case (cp & cpFrozenScaleValue) of
                   Just val -> Map.insert "frozen_scale_value" (lPackValueRaw @Natural val) ce
                   Nothing -> ce)
@@ -155,7 +154,7 @@ registryDaoDecisionLambda DecisionLambdaInput{..} = do
             & (\ce -> case (cp & cpSlashDivisionValue) of
                   Just val -> Map.insert "slash_division_value" (lPackValueRaw @Natural val) ce
                   Nothing -> ce)
-      pure $ ([], DynamicRec' $ BigMap $ newExtras, Nothing)
+      pure $ ([], DynamicRec' $ BigMap Nothing $ newExtras, Nothing)
     Transfer_proposal tp -> do
       let extras = diExtra
             & applyDiff (tp & tpRegistryDiff)
@@ -165,12 +164,14 @@ registryDaoDecisionLambda DecisionLambdaInput{..} = do
       pure $ (ops, extras, Nothing)
     Update_guardian guardian ->
       pure $ ([], diExtra, Just guardian)
+    Update_contract_delegate _ ->
+      pure $ ([], diExtra, Nothing)
 
 applyDiffAffected :: ProposalKey -> [(MText, Maybe MText)] -> ContractExtra -> ContractExtra
 applyDiffAffected proposalKey diffs ce =
   let registryAff = applyDiffRegistryAffected proposalKey diffs $ unpackWithError @(Map MText ProposalKey) $ findBigMap "registry_affected" ce
-  in DynamicRec' $ BigMap $
-      Map.insert "registry_affected" (lPackValueRaw @(Map MText ProposalKey) registryAff) (T.unBigMap $ unDynamic ce)
+  in DynamicRec' $ BigMap Nothing $
+      Map.insert "registry_affected" (lPackValueRaw @(Map MText ProposalKey) registryAff) (bmMap $ unDynamic ce)
 
 applyDiffRegistryAffected :: ProposalKey -> [(MText, Maybe MText)] -> Map MText ProposalKey -> Map MText ProposalKey
 applyDiffRegistryAffected proposalKey diffs registryAff =
@@ -183,8 +184,8 @@ applyDiffRegistryAffected proposalKey diffs registryAff =
 applyDiff :: [(MText, Maybe MText)] -> ContractExtra -> ContractExtra
 applyDiff diffs ce =
   let newRegistry = applyDiffRegistry diffs $ unpackWithError @(Map MText MText) $ findBigMap "registry" ce
-  in DynamicRec' $ BigMap $
-      Map.insert "registry" (lPackValueRaw @(Map MText MText) newRegistry) (T.unBigMap $ unDynamic ce)
+  in DynamicRec' $ BigMap Nothing $
+      Map.insert "registry" (lPackValueRaw @(Map MText MText) newRegistry) (bmMap $ unDynamic ce)
 
 applyDiffRegistry :: [(MText, Maybe MText)] -> Map MText MText -> Map MText MText
 applyDiffRegistry diffs registry =
@@ -205,7 +206,7 @@ lookupRegistryEntrypoint packedParam  = do
   let (unpackVal :: Either ModelError (MText, Address, Map MText MText)) = do
         (key, addr) <- first (const UNPACKING_FAILED) $ lUnpackValueRaw @LookupRegistryParam packedParam
 
-        packedRegistry <- case Map.lookup "registry" (store & sExtra & unDynamic & T.unBigMap ) of
+        packedRegistry <- case Map.lookup "registry" (store & sExtra & unDynamic & bmMap) of
           Just val -> Right val
           Nothing -> Left MISSING_VALUE
         registry <- first (const UNPACKING_FAILED) $ lUnpackValueRaw @(Map MText MText) packedRegistry
@@ -244,8 +245,7 @@ genCustomCallsRegistryDao :: MkGenCustomCalls
 genCustomCallsRegistryDao = do
   mkLookupRegistryParam <- genLookupRegistryParam
   pure
-    [ \_ -> ([mt|receive_xtz|], lPackValueRaw ())
-    , \ModelInputArg{..} -> ([mt|lookup_registry|], lPackValueRaw @LookupRegistryParam (mkLookupRegistryParam miaViewContractAddr))
+    [ \ModelInputArg{..} -> ([mt|lookup_registry|], lPackValueRaw @LookupRegistryParam (mkLookupRegistryParam miaViewContractAddr))
     ]
 
 genLookupRegistryParam :: GeneratorT (TAddress (MText, Maybe MText) -> LookupRegistryParam)

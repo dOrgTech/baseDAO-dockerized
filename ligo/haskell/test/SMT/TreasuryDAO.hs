@@ -3,7 +3,7 @@
 
 module SMT.TreasuryDAO
   ( hprop_TreasuryDaoSMT
-  )  where
+  ) where
 
 import Universum hiding (drop, swap)
 
@@ -11,16 +11,15 @@ import Control.Monad.Except (throwError)
 import qualified Data.Map as Map
 import Hedgehog
 import qualified Hedgehog.Gen as Gen
-import qualified Hedgehog.Range as Range
 import Hedgehog.Gen.Tezos.Address (genAddress)
-import Named (NamedF(..))
+import qualified Hedgehog.Range as Range
 
-import Lorentz hiding (now, (>>), and)
-import Michelson.Text (unsafeMkMText)
+import Lorentz hiding (and, div, now, (>>))
+import Morley.Util.Named
 
 import Ligo.BaseDAO.Common.Types
+import Ligo.BaseDAO.Contract (baseDAOTreasuryStorageLigo)
 import Ligo.BaseDAO.Types
-import Ligo.Util
 import SMT.Common.Gen
 import SMT.Common.Helper
 import SMT.Common.Run
@@ -33,7 +32,7 @@ import Test.Ligo.TreasuryDAO.Types
 hprop_TreasuryDaoSMT :: Property
 hprop_TreasuryDaoSMT =
   let
-    treasuryFs = fromVal ($(fetchValue @FullStorage "haskell/test/treasuryDAO_storage.tz" "TREASURY_STORAGE_PATH"))
+    treasuryFs = #treasuryFs :! baseDAOTreasuryStorageLigo
     option = SmtOption
       { soMkPropose = genProposeTreasuryDao
       , soMkCustomCalls = genCustomCallsTreasuryDao
@@ -43,7 +42,7 @@ hprop_TreasuryDaoSMT =
       , soProposalCheck = treasuryDaoProposalCheck
       , soRejectedProposalSlashValue = treasuryDaoRejectedProposalSlashValue
       , soDecisionLambda = treasuryDaoDecisionLambda
-      , soCustomEps = Map.fromList [(unsafeMkMText "receive_xtz", \_ -> pure ())]
+      , soCustomEps = Map.empty
       }
   in
     withTests 30 $ property $ do
@@ -104,6 +103,7 @@ treasuryDaoProposalCheck (params, extras) = do
       unless isValid $
         throwError FAIL_PROPOSAL_CHECK
     Update_guardian _ -> pure ()
+    Update_contract_delegate _ -> pure ()
 
 
 treasuryDaoRejectedProposalSlashValue :: (Proposal, ContractExtra) -> ModelT Natural
@@ -112,7 +112,7 @@ treasuryDaoRejectedProposalSlashValue (p, extras) = do
       slashDivisionValue = unpackWithError @Natural $ findBigMap "slash_division_value" extras
   pure $ (slashScaleValue * (p & plProposerFrozenToken) `div` slashDivisionValue)
 
-treasuryDaoDecisionLambda :: DecisionLambdaInput BigMap -> ModelT ([SimpleOperation], ContractExtra, Maybe Address)
+treasuryDaoDecisionLambda :: DecisionLambdaInput -> ModelT ([SimpleOperation], ContractExtra, Maybe Address)
 treasuryDaoDecisionLambda DecisionLambdaInput{..} = do
   let metadata = (diProposal & plMetadata)
         & lUnpackValueRaw @TreasuryDaoProposalMetadata
@@ -124,7 +124,8 @@ treasuryDaoDecisionLambda DecisionLambdaInput{..} = do
       pure $ (ops, diExtra, Nothing)
     Update_guardian guardian ->
       pure $ ([], diExtra, Just guardian)
-
+    Update_contract_delegate _ ->
+      pure $ ([], diExtra, Nothing)
 
 -------------------------------------------------------------------------------
 -- Gen Functions
@@ -148,7 +149,7 @@ genProposeTreasuryDao senderInput delegate1 invalidFrom = do
 
 genCustomCallsTreasuryDao :: MkGenCustomCalls
 genCustomCallsTreasuryDao =
-  pure [ \_ -> ([mt|receive_xtz|], lPackValueRaw ()) ]
+  pure []
 
 genTransferProposal :: GeneratorT (Address -> Address -> TreasuryDaoProposalMetadata)
 genTransferProposal = do
@@ -168,4 +169,3 @@ genTreasuryDaoProposalMetadata :: GeneratorT (Address -> Address -> TreasuryDaoP
 genTreasuryDaoProposalMetadata = do
   guardianAddr <- genAddress
   Gen.choice [genTransferProposal, pure $ \_ _ -> Update_guardian guardianAddr]
-

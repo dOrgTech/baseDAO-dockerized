@@ -5,24 +5,25 @@
 #define COMMON_ERRORS_H
 
 #include "types.mligo"
+#include "../error_codes.mligo"
 
 let fail_proposal_check (msg : string) : unit =
-  ([%Michelson ({| { FAILWITH } |} : (string * string) -> unit)]
-    ("FAIL_PROPOSAL_CHECK", msg) : unit)
+  ([%Michelson ({| { FAILWITH } |} : (nat * string) -> unit)]
+    (fail_proposal_check, msg) : unit)
 
 // Xtz transfer amount cannot be 0
 let zero_mutez_err_msg = "ZERO_MUTEZ"
 
-// Xtz transfer amount cannot be smaller than 'min_xtz_amount'
+// Xtz transfer amount cannot be smaller than `min_xtz_amount`
 let too_small_xtz_err_msg = "LOW_XTZ"
 
-// Xtz transfer amount cannot be bigger than 'max_xtz_amount'
+// Xtz transfer amount cannot be bigger than `max_xtz_amount`
 let too_large_xtz_err_msg = "HIGH_XTZ"
 
 // Incorrect token amounts locked
 let wrong_token_amount_err_msg = "WRONG_TOKEN_AMOUNT"
 
-// Proposal size is bigger than 'max_proposal_size'
+// Proposal size is bigger than `max_proposal_size`
 let large_proposal_err_msg = "LARGE_PROPOSAL"
 
 // Shared between treasury and registry dao

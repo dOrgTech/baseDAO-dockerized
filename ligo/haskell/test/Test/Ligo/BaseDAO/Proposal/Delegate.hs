@@ -7,13 +7,12 @@ module Test.Ligo.BaseDAO.Proposal.Delegate
 
 import Universum
 
-import qualified Data.Map as M
 import Lorentz hiding (assert, (>>))
-import Morley.Nettest
-import Morley.Nettest.Tasty (nettestScenarioOnEmulatorCaps)
+import Morley.Util.Named
+import Test.Cleveland
 import Test.Tasty (TestTree, testGroup)
-import Util.Named
 
+import Ligo.BaseDAO.ErrorCodes
 import Ligo.BaseDAO.Types
 import Test.Ligo.BaseDAO.Common
 import Test.Ligo.BaseDAO.Proposal.Config
@@ -21,30 +20,31 @@ import Test.Ligo.BaseDAO.Proposal.Config
 test_UpdateDelegates :: TestTree
 test_UpdateDelegates =
   testGroup "Update_delegates:"
-    [ nettestScenarioOnEmulatorCaps "add/remove a delgate" $
+    [ testScenario "add/remove a delgate" $ scenario $
         addRemoveDelegate (originateLigoDaoWithConfigDesc dynRecUnsafe)
-    , nettestScenarioOnEmulatorCaps "update multiple delegates" $
-        updateDelegates (originateLigoDaoWithConfigDesc dynRecUnsafe) (\addr -> sDelegates . fsStorage <$> getFullStorage addr)
+    , testScenario "update multiple delegates" $ scenario $
+        updateDelegates (originateLigoDaoWithConfigDesc dynRecUnsafe) checkIfDelegateExists
     ]
 
 addRemoveDelegate
-  :: (MonadNettest caps base m, HasCallStack)
+  :: (MonadCleveland caps base m, HasCallStack)
   => (ConfigDesc Config -> OriginateFn m)
   -> m ()
 addRemoveDelegate originateFn = do
   DaoOriginateData{..} <- originateFn testConfig defaultQuorumThreshold
+  startLevel <- getOriginationLevel dodDao
   let param enable = DelegateParam
         { dpEnable = enable
         , dpDelegate = dodOperator1
         }
 
   withSender dodOwner1 $
-    call dodDao (Call @"Update_delegate") [param True]
+    call dodDao (Call @"Freeze") (#amount :! 100)
 
   withSender dodOwner1 $
-    call dodDao (Call @"Freeze") (#amount .! 100)
+    call dodDao (Call @"Update_delegate") [param True]
 
-  advanceLevel dodPeriod
+  advanceToLevel (startLevel + dodPeriod)
   let params counter = ProposeParams
         { ppFrozenToken = 10
         , ppProposalMetadata = lPackValueRaw @Integer counter
@@ -58,25 +58,25 @@ addRemoveDelegate originateFn = do
                 , vFrom = dodOwner1
                 }
   withSender dodOperator1 $ call dodDao (Call @"Propose") (params 1)
-  advanceLevel dodPeriod
+  advanceToLevel (startLevel + 2*dodPeriod)
   withSender dodOperator1 $ call dodDao (Call @"Vote") [vote]
 
   withSender dodOwner1 $
     call dodDao (Call @"Update_delegate") [param False]
 
   withSender dodOperator1 $ call dodDao (Call @"Vote") [vote]
-    & expectCustomErrorNoArg #nOT_DELEGATE dodDao
-  advanceLevel dodPeriod
+    & expectFailedWith notDelegate
+  advanceToLevel (startLevel + 3*dodPeriod)
   withSender dodOperator1 $ call dodDao (Call @"Propose") (params 2)
-    & expectCustomErrorNoArg #nOT_DELEGATE dodDao
+    & expectFailedWith notDelegate
 
 
 updateDelegates
-  :: (MonadNettest caps base m, HasCallStack)
+  :: (MonadCleveland caps base m, HasCallStack)
   => (ConfigDesc Config -> OriginateFn m)
-  -> (Address -> m Delegates)
+  -> (TAddress Parameter -> Delegate -> m Bool)
   -> m ()
-updateDelegates originateFn getDelegateFn = do
+updateDelegates originateFn isDelegateFn = do
   DaoOriginateData{..} <- originateFn testConfig defaultQuorumThreshold
   let mkDelegate addr enable = DelegateParam
         { dpEnable = enable
@@ -84,31 +84,28 @@ updateDelegates originateFn getDelegateFn = do
         }
 
   -- Before Delegate set
-  BigMap delegates1 <- getDelegateFn (unTAddress dodDao)
-  M.member (Delegate dodOwner1 dodOperator1) delegates1 @== False
-  M.member (Delegate dodOwner1 dodOperator2) delegates1 @== False
+  isDelegateFn dodDao (Delegate dodOwner1 dodOperator1) @@== False
+  isDelegateFn dodDao (Delegate dodOwner1 dodOperator2) @@== False
 
   -- Add a Delegate
   withSender dodOwner1 $
     call dodDao (Call @"Update_delegate") [mkDelegate dodOperator1 True]
 
-  BigMap delegates2 <- getDelegateFn (unTAddress dodDao)
-  M.member (Delegate dodOwner1 dodOperator1) delegates2 @== True
-  M.member (Delegate dodOwner1 dodOperator2) delegates2 @== False
+  isDelegateFn dodDao (Delegate dodOwner1 dodOperator1) @@== True
+  isDelegateFn dodDao (Delegate dodOwner1 dodOperator2) @@== False
 
   -- Add a new Delegate, remove an old one
   withSender dodOwner1 $
     call dodDao (Call @"Update_delegate")
       [mkDelegate dodOperator1 False, mkDelegate dodOperator2 True]
 
-  BigMap delegates3 <- getDelegateFn (unTAddress dodDao)
-  M.member (Delegate dodOwner1 dodOperator1) delegates3 @== False
-  M.member (Delegate dodOwner1 dodOperator2) delegates3 @== True
+  isDelegateFn dodDao (Delegate dodOwner1 dodOperator1) @@== False
+  isDelegateFn dodDao (Delegate dodOwner1 dodOperator2) @@== True
+
 
   -- Removing a non-existent delegate is allowed
   someAddr :: Address <- newAddress "some_address"
   withSender dodOwner1 $
     call dodDao (Call @"Update_delegate") [mkDelegate someAddr False]
 
-  BigMap delegates4 <- getDelegateFn (unTAddress dodDao)
-  M.member (Delegate dodOwner1 someAddr) delegates4 @== False
+  isDelegateFn dodDao (Delegate dodOwner1 someAddr) @@== False

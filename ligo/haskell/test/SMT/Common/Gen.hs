@@ -12,22 +12,23 @@ import Universum hiding (drop, swap)
 
 import Crypto.Random (drgNewSeed, seedFromInteger, withDRG)
 import qualified Data.Map as Map
-import Hedgehog.Gen.Tezos.Address (genAddress)
 import qualified Hedgehog.Gen as Gen
+import Hedgehog.Gen.Tezos.Address (genAddress)
 import qualified Hedgehog.Range as Range
 
-import Lorentz hiding (not, cast, concat, get)
-import qualified Lorentz.Contracts.Spec.FA2Interface as FA2
-import Michelson.Test.Dummy
 import Hedgehog.Gen.Tezos.Crypto (genSecretKey)
-import Tezos.Address (Address(..), unsafeParseContractHash, mkKeyAddress)
-import Tezos.Crypto (SecretKey, toPublic, sign)
-import Util.Named ((.!))
+import Lorentz hiding (cast, concat, get, not)
+import qualified Lorentz.Contracts.Spec.FA2Interface as FA2
+import Morley.Michelson.Typed.Haskell.Value (BigMap(..))
+import Morley.Tezos.Address (Address(..), mkKeyAddress, unsafeParseContractHash)
+import Morley.Tezos.Core (dummyChainId)
+import Morley.Tezos.Crypto (SecretKey, sign, toPublic)
+import Morley.Util.Named
 
 import Ligo.BaseDAO.Common.Types
 import Ligo.BaseDAO.Types
-import SMT.Model.BaseDAO.Types
 import SMT.Common.Types
+import SMT.Model.BaseDAO.Types
 
 genMkModelInput :: SmtOption -> GeneratorT MkModelInput
 genMkModelInput option@SmtOption{..} = do
@@ -72,10 +73,10 @@ genStorage = do
   let staked = getStaked freezeHistory
   quorumThresholdAtCycle <- genQuorumThresholdAtCycle staked
 
-  pure $ \guardAddr govAddr -> Storage'
+  pure $ \guardAddr govAddr -> Storage
         { sFrozenTotalSupply = getTotalSupply freezeHistory
-        , sDelegates = BigMap delegates
-        , sFreezeHistory = BigMap freezeHistory
+        , sDelegates = BigMap Nothing delegates
+        , sFreezeHistory = BigMap Nothing freezeHistory
         , sAdmin = admin
         , sGuardian = guardAddr
         , sGovernanceToken = GovernanceToken
@@ -84,8 +85,9 @@ genStorage = do
               }
         , sStartLevel = startLevel
         , sQuorumThresholdAtCycle = quorumThresholdAtCycle
-        , sProposals = BigMap mempty
+        , sProposals = BigMap Nothing mempty
         , sProposalKeyListSortByDate = mempty
+        , sStakedVotes = BigMap Nothing mempty
         , sExtra = DynamicRec' mempty
 
         , sFrozenTokenId = FA2.theTokenId
@@ -101,7 +103,7 @@ genConfig = do
   let maxChangePercent = 0
   let changePercent = 19
   let governanceTotalSupply = 500
-  pure $ Config'
+  pure $ Config
     { cProposalCheck = do
         dropN @2 # push ()
     , cRejectedProposalSlashValue = do
@@ -111,7 +113,7 @@ genConfig = do
         nil #
         swap #
         dip (push Nothing) #
-        constructStack @(DecisionLambdaOutput BigMap)
+        constructStack @DecisionLambdaOutput
     , cCustomEntrypoints = DynamicRec' $ mempty
     , cFixedProposalFee = fixedProposalFee
     , cPeriod = votingPeriod
@@ -123,7 +125,6 @@ genConfig = do
     , cMaxQuorumThreshold = percentageToFractionNumerator 99 -- 99%
     , cMinQuorumThreshold = percentageToFractionNumerator 1 -- 1%
 
-    , cMaxVoters = 1000
     , cMaxProposals = 500
     }
 
@@ -166,14 +167,14 @@ genQuorumThresholdAtCycle :: Natural -> GeneratorT QuorumThresholdAtCycle
 genQuorumThresholdAtCycle staked = do
   quorumThreshold <- Gen.integral (Range.constant 1 3)
   lvl <- get <&> gsLevel
-  pure $ QuorumThresholdAtCycle lvl quorumThreshold staked
+  pure $ QuorumThresholdAtCycle quorumThreshold lvl staked
 
 genModelState :: SmtOption -> GeneratorT (Address -> Address -> ModelState)
 genModelState SmtOption{..} = do
 
   mkStore <- genStorage
   config <- genConfig
-  let mkFs = \guardian gov -> FullStorage' (mkStore guardian gov) config
+  let mkFs = \guardian gov -> FullStorage (mkStore guardian gov) config
 
   selfAddrPlaceholder <- genAddress
   pure $ \guardian gov ->
@@ -255,6 +256,7 @@ genProposingProcess = do
   flushAction <- genFlush
   mkVote <- genVote
   mkDropProposal <- genDropProposal
+  mkUnstakeVote <- genUnstakeVote
 
   -- | `advanceLvl` is provided precisely to ensure the order of operations results in successful proposal.
   let mkCall param advanceLvl = ModelCall
@@ -273,28 +275,32 @@ genProposingProcess = do
           permitProtecteds = mkVote key freezeAmt
           voterFreezeAmt = getVoteFreezeAmt permitProtecteds
           dropProposalAction = mkDropProposal key
-        in (freezeAmt, voterFreezeAmt, permitProtecteds, proposeAction, dropProposalAction)
+          unstakeVoteAction = mkUnstakeVote key
+        in (freezeAmt, voterFreezeAmt, permitProtecteds, proposeAction, dropProposalAction, unstakeVoteAction)
 
   pure $
       [ \_ -> mkCall (XtzForbidden $ Update_delegate [DelegateParam True delegate1]) Nothing
       , \args ->
-          let (freezeAmt, _, _, _, _) = applyArgs args
-          in mkCall (XtzForbidden $ Freeze (#amount .! (freezeAmt)) ) Nothing
+          let (freezeAmt, _, _, _, _, _) = applyArgs args
+          in mkCall (XtzForbidden $ Freeze (#amount :! (freezeAmt)) ) Nothing
       , \args ->
-          let (_, voterFreezeAmt, _, _, _) = applyArgs args
-          in mkCall (XtzForbidden $ Freeze (#amount .! voterFreezeAmt) ) Nothing
+          let (_, voterFreezeAmt, _, _, _, _) = applyArgs args
+          in mkCall (XtzForbidden $ Freeze (#amount :! voterFreezeAmt) ) Nothing
       , \args ->
-          let (_, _, _, proposeAction, _) = applyArgs args
+          let (_, _, _, proposeAction, _, _) = applyArgs args
           in mkCall proposeAction (Just 1)
       , \args ->
-          let (_, _, permitProtecteds, _, _) = applyArgs args
+          let (_, _, permitProtecteds, _, _, _) = applyArgs args
           in mkCall (XtzForbidden $ Vote permitProtecteds) (Just 1)
       , \_ -> mkCall flushAction (Just 2)
       , \args ->
-          let (freezeAmt, _, _, _, _) = applyArgs args
-          in mkCall (XtzForbidden $ Unfreeze (#amount .! (freezeAmt)) ) Nothing
+          let (_, _, _, _, _, unstakeVoteAction) = applyArgs args
+          in mkCall unstakeVoteAction Nothing
       , \args ->
-          let (_, _, _, _, dropProposalAction) = applyArgs args
+          let (freezeAmt, _, _, _, _, _) = applyArgs args
+          in mkCall (XtzForbidden $ Unfreeze (#amount :! (freezeAmt)) ) Nothing
+      , \args ->
+          let (_, _, _, _, dropProposalAction, _) = applyArgs args
           in mkCall dropProposalAction Nothing
       ] <> (
         mkCustomCalls
@@ -358,6 +364,10 @@ genDropProposal :: GeneratorT (ProposalKey -> Parameter)
 genDropProposal = do
   pure $ \key -> XtzForbidden $ Drop_proposal key
 
+genUnstakeVote :: GeneratorT (ProposalKey -> Parameter)
+genUnstakeVote = do
+  pure $ \key -> XtzForbidden $ Unstake_vote [key]
+
 genUpdateDelegate :: GeneratorT Parameter
 genUpdateDelegate = do
   params <- genDelegateParams
@@ -373,7 +383,7 @@ genTransferOwnership :: GeneratorT Parameter
 genTransferOwnership = do
   userAddrs <- get <&> gsAddresses
   newOwner <- fst <$> Gen.element userAddrs
-  pure $ XtzAllowed $ Transfer_ownership $ (#newOwner .! newOwner)
+  pure $ XtzAllowed $ Transfer_ownership $ (#newOwner :! newOwner)
 
 -- Nothing to randomize, simply for consistency
 genAcceptOwnership :: GeneratorT Parameter

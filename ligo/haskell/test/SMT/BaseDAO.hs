@@ -11,15 +11,16 @@ import Universum hiding (drop, swap)
 
 import Control.Monad.Except (throwError)
 import Hedgehog
-import Lorentz hiding (now, (>>))
+import Lorentz hiding (div, fromInteger, now, (>>))
 
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
-import SMT.Common.Run
-import SMT.Model.BaseDAO.Types
-import SMT.Common.Types
+import Ligo.BaseDAO.ErrorCodes
 import Ligo.BaseDAO.Types
+import SMT.Common.Run
+import SMT.Common.Types
+import SMT.Model.BaseDAO.Types
 import Test.Ligo.BaseDAO.Common (makeProposalKey, metadataSize)
 
 
@@ -64,8 +65,10 @@ addBaseDaoConfig fs = fs
         # (if #requireValue <=. #ppFrozenToken then
               push ()
           else
-              push ""
-            # failCustom #fAIL_PROPOSAL_CHECK
+              push ("" :: MText)
+            # push failProposalCheck
+            # pair
+            # failWith
           )
       , cRejectedProposalSlashValue =
         -- Implemented from `divideOnRejectionBy 2`
@@ -85,7 +88,7 @@ addBaseDaoConfig fs = fs
         # nil
         # swap
         # dip (push Nothing)
-        # constructStack @(DecisionLambdaOutput BigMap)
+        # constructStack @(DecisionLambdaOutput)
       }
   }
 
