@@ -15,7 +15,7 @@ ENV PATH="/root/.nvm/versions/node/v${NODE_VERSION}/bin/:${PATH}"
 
 #INSTALL STACK AND LIGO
 RUN curl -sSL https://get.haskellstack.org/ | sh
-RUN wget https://ligolang.org/bin/linux/ligo
+RUN wget https://gitlab.com/ligolang/ligo/-/jobs/2959700000/artifacts/raw/ligo
 RUN chmod +x ./ligo && cp ./ligo /usr/local/bin
 
 #GENERATE CONTRACTS
