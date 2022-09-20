@@ -1,5 +1,5 @@
-// SPDX-FileCopyrightText: 2021 TQ Tezos
-// SPDX-License-Identifier: LicenseRef-MIT-TQ
+// SPDX-FileCopyrightText: 2021 Tezos Commons
+// SPDX-License-Identifier: LicenseRef-MIT-TC
 
 #if !COMMON_H
 #define COMMON_H
@@ -9,7 +9,7 @@
 
 [@inline]
 let authorize_admin (store : storage): storage =
-  if sender = store.admin then
+  if Tezos.get_sender unit = store.admin then
     store
   else
     (failwith not_admin : storage)

@@ -2,16 +2,15 @@
                               (Pair (Pair (Pair 0 10000000000000000000000000) 990000 990000) (Pair 10000 5) 20 15)
                               50000)
                         {}
-                        (Pair (Pair (Pair 0 1) 1000 1000000) (Pair 0 {}) {} {})
-                        1
-                        1)
+                        {}
+                        {})
                   (Pair {} 0)
                   0
                   "KT1QVMpfK12j9v8wy8s4v2EK3EHHH8jvisnW"
                   0)
             (Pair (Pair "tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb"
                         { Elt ""
-                              0x74657a6f732d73746f726167653a2f2f4b54314567536664505346425675504c435937584b5777694a464c447437336143364c512f6d657461646174614b6579 })
+                              0x74657a6f732d73746f726167653a2f2f4b54314646535557726459785948346f736e3657566163525966515a6639796d314c4a662f6d657461646174614b6579 })
                   None
                   "tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb")
             (Pair 0 {})
