@@ -3,7 +3,7 @@
 
 # Ligo executable
 # LIGO ?= ligo
-LIGO=docker run --rm -v "/Users/manankpatni/Documents/.temp/dorg/baseDAO-dockerized/ligo":"/Users/manankpatni/Documents/.temp/dorg/baseDAO-dockerized/ligo" -w "/Users/manankpatni/Documents/.temp/dorg/baseDAO-dockerized/ligo" ligolang/ligo:0.46.0
+LIGO=docker run --rm -v $(PWD):$(PWD) -w $(PWD) ligolang/ligo:0.46.0
 
 # Morley executable used for contract optimization
 MORLEY ?= morley
