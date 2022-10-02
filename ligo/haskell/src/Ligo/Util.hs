@@ -1,5 +1,5 @@
--- SPDX-FileCopyrightText: 2021 TQ Tezos
--- SPDX-License-Identifier: LicenseRef-MIT-TQ
+-- SPDX-FileCopyrightText: 2021 Tezos Commons
+-- SPDX-License-Identifier: LicenseRef-MIT-TC
 
 -- | Read a contract at compile time.
 module Ligo.Util
@@ -9,7 +9,7 @@ module Ligo.Util
 import Universum
 
 import Data.FileEmbed (makeRelativeToProject)
-import qualified Data.Text.IO.Utf8 as Utf8 (readFile)
+import Data.Text.IO.Utf8 qualified as Utf8 (readFile)
 import Fmt (pretty)
 import Language.Haskell.TH (ExpQ)
 import Language.Haskell.TH.Syntax (qAddDependentFile)
@@ -31,7 +31,7 @@ fetchValue rawPath = do
   case readValue @(ToT st) (MSFile path) valueLiteral of
     Left e ->
       -- Emit a compiler error if the value cannot be read.
-      fail (pretty e)
+      fail (pretty (untypeDemoteT @(ToT st)) <> pretty e)
     Right _ ->
       -- Emit a haskell expression that reads the value.
       [|

@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: LicenseRef-MIT-TC
 
 # Ligo executable
-# LIGO ?= ligo
 LIGO=docker run --rm -v $(PWD):$(PWD) -w $(PWD) ligolang/ligo:0.46.0
 
 # Morley executable used for contract optimization
@@ -49,9 +48,9 @@ $(OUT)/%DAO.tz: src/**/**
 
 	# strip the surrounding braces and indentation,
 	# note that dollar char is escaped as part of Makefile
-	gsed -i '/^ *$$/d' $@
-	gsed -i 's/^[{ ] //g' $@
-	gsed -i '$$s/[}] *$$//' $@
+	sed -i '/^ *$$/d' $@
+	sed -i 's/^[{ ] //g' $@
+	sed -i '$$s/[}] *$$//' $@
 ifeq ($(OPTIMIZE), true)
 	# ============== Optimizing contract ============== #
 	$(MORLEY) optimize --contract $@ --output $@
@@ -241,14 +240,14 @@ $(OUT)/lambdaDAO_storage.tz: src/**
 	$(BUILD_STORAGE) --output-file $(OUT)/lambdaDAO_storage.tz \
       src/base_DAO.mligo -e base_DAO_contract "default_storage( \
         { admin = (\"$(call require_defined,admin_address)\" : address) \
-				; guardian = (\"$(call require_defined,guardian_address)\" : address) \
-				; governance_token = \
-					{ address = (\"$(call require_defined,governance_token_address)\" : address) \
-					; token_id = ($(call require_defined,governance_token_id) : nat) \
-					} \
-				; start_level = {blocks = $(call require_defined,start_level)} \
-				; metadata_map = ($(call escape_double_quote,$(metadata_map)) : metadata_map) \
-				; freeze_history = ($(call escape_double_quote,$(freeze_history)) : freeze_history_list) \
+        ; guardian = (\"$(call require_defined,guardian_address)\" : address) \
+        ; governance_token = \
+          { address = (\"$(call require_defined,governance_token_address)\" : address) \
+          ; token_id = ($(call require_defined,governance_token_id) : nat) \
+          } \
+        ; start_level = {blocks = $(call require_defined,start_level)} \
+        ; metadata_map = ($(call escape_double_quote,$(metadata_map)) : metadata_map) \
+        ; freeze_history = ($(call escape_double_quote,$(freeze_history)) : freeze_history_list) \
         ; config_data = \
           { max_quorum = { numerator = (($(max_quorum) : nat) * quorum_denominator)/100n } \
           ; min_quorum = { numerator = (($(min_quorum) : nat) * quorum_denominator)/100n } \
@@ -265,6 +264,13 @@ $(OUT)/lambdaDAO_storage.tz: src/**
 	# ================= Compilation successful ================= #
 	# See "$(OUT)/lambdaDAO_storage.tz" for compilation result	#
 	#
+$(OUT)/lambdaregistryDAO_storage.tz : frozen_scale_value = 1n
+$(OUT)/lambdaregistryDAO_storage.tz : frozen_extra_value = 0n
+$(OUT)/lambdaregistryDAO_storage.tz : max_proposal_size = 100n
+$(OUT)/lambdaregistryDAO_storage.tz : slash_scale_value = 1n
+$(OUT)/lambdaregistryDAO_storage.tz : slash_division_value = 1n
+$(OUT)/lambdaregistryDAO_storage.tz : min_xtz_amount = 0mutez
+$(OUT)/lambdaregistryDAO_storage.tz : max_xtz_amount = 100mutez
 $(OUT)/lambdaregistryDAO_storage.tz : metadata_map = Big_map.empty
 $(OUT)/lambdaregistryDAO_storage.tz : freeze_history = []
 $(OUT)/lambdaregistryDAO_storage.tz : fixed_proposal_fee_in_token = 0n
@@ -283,33 +289,48 @@ $(OUT)/lambdaregistryDAO_storage.tz: src/**
 	cp src/variants/lambdaregistry/storage.mligo src/implementation_storage.mligo
 	mkdir -p $(OUT)
 	$(BUILD_STORAGE) --output-file $(OUT)/lambdaregistryDAO_storage.tz \
-      src/base_DAO.mligo -e base_DAO_contract "default_storage( \
-        { admin = (\"$(call require_defined,admin_address)\" : address) \
-				; guardian = (\"$(call require_defined,guardian_address)\" : address) \
-				; governance_token = \
-					{ address = (\"$(call require_defined,governance_token_address)\" : address) \
-					; token_id = ($(call require_defined,governance_token_id) : nat) \
-					} \
-				; start_level = {blocks = $(call require_defined,start_level)} \
-				; metadata_map = ($(call escape_double_quote,$(metadata_map)) : metadata_map) \
-				; freeze_history = ($(call escape_double_quote,$(freeze_history)) : freeze_history_list) \
-        ; config_data = \
-          { max_quorum = { numerator = (($(max_quorum) : nat) * quorum_denominator)/100n } \
-          ; min_quorum = { numerator = (($(min_quorum) : nat) * quorum_denominator)/100n } \
-          ; period = { blocks = ($(period) : nat) } \
-          ; proposal_flush_level = { blocks = ($(proposal_flush_level) : nat) } \
-          ; proposal_expired_level = { blocks = ($(proposal_expired_level) : nat) }\
-          ; fixed_proposal_fee_in_token = ($(fixed_proposal_fee_in_token) : nat) \
-          ; quorum_threshold = { numerator = (($(quorum_threshold) : nat) * quorum_denominator)/100n } \
-          ; quorum_change = { numerator = (($(quorum_change) : nat) * quorum_denominator)/100n } \
-          ; max_quorum_change = { numerator = (($(max_quorum_change) : nat) * quorum_denominator)/100n } \
-          ; governance_total_supply = ($(governance_total_supply) : nat) \
-          } \
+      src/base_DAO.mligo -e base_DAO_contract "default_lambda_registry_DAO_storage( \
+        { base_data = \
+          { admin = (\"$(call require_defined,admin_address)\" : address) \
+          ; guardian = (\"$(call require_defined,guardian_address)\" : address) \
+          ; governance_token = \
+            { address = (\"$(call require_defined,governance_token_address)\" : address) \
+            ; token_id = ($(call require_defined,governance_token_id) : nat) \
+            } \
+          ; start_level = {blocks = $(call require_defined,start_level)} \
+          ; metadata_map = ($(call escape_double_quote,$(metadata_map)) : metadata_map) \
+          ; freeze_history = ($(call escape_double_quote,$(freeze_history)) : freeze_history_list) \
+          ; config_data = \
+            { max_quorum = { numerator = (($(max_quorum) : nat) * quorum_denominator)/100n } \
+            ; min_quorum = { numerator = (($(min_quorum) : nat) * quorum_denominator)/100n } \
+            ; period = { blocks = ($(period) : nat) } \
+            ; proposal_flush_level = { blocks = ($(proposal_flush_level) : nat) } \
+            ; proposal_expired_level = { blocks = ($(proposal_expired_level) : nat) }\
+            ; fixed_proposal_fee_in_token = ($(fixed_proposal_fee_in_token) : nat) \
+            ; quorum_threshold = { numerator = (($(quorum_threshold) : nat) * quorum_denominator)/100n } \
+            ; quorum_change = { numerator = (($(quorum_change) : nat) * quorum_denominator)/100n } \
+            ; max_quorum_change = { numerator = (($(max_quorum_change) : nat) * quorum_denominator)/100n } \
+            ; governance_total_supply = ($(governance_total_supply) : nat) \
+            }} \
+        ; frozen_scale_value = ($(frozen_scale_value) : nat) \
+        ; frozen_extra_value = ($(frozen_extra_value) : nat) \
+        ; max_proposal_size = ($(max_proposal_size) : nat) \
+        ; slash_scale_value = ($(slash_scale_value) : nat) \
+        ; slash_division_value = ($(slash_division_value) : nat) \
+        ; min_xtz_amount = ($(min_xtz_amount) : tez) \
+        ; max_xtz_amount = ($(max_xtz_amount) : tez) \
         })"
 	# ================= Compilation successful ================= #
 	# See "$(OUT)/lambdaregistryDAO_storage.tz" for compilation result	#
 	#
 	#
+$(OUT)/lambdatreasuryDAO_storage.tz : frozen_scale_value = 1n
+$(OUT)/lambdatreasuryDAO_storage.tz : frozen_extra_value = 0n
+$(OUT)/lambdatreasuryDAO_storage.tz : max_proposal_size = 100n
+$(OUT)/lambdatreasuryDAO_storage.tz : slash_scale_value = 1n
+$(OUT)/lambdatreasuryDAO_storage.tz : slash_division_value = 1n
+$(OUT)/lambdatreasuryDAO_storage.tz : min_xtz_amount = 0mutez
+$(OUT)/lambdatreasuryDAO_storage.tz : max_xtz_amount = 100mutez
 $(OUT)/lambdatreasuryDAO_storage.tz : metadata_map = Big_map.empty
 $(OUT)/lambdatreasuryDAO_storage.tz : freeze_history = []
 $(OUT)/lambdatreasuryDAO_storage.tz : fixed_proposal_fee_in_token = 0n
@@ -328,28 +349,36 @@ $(OUT)/lambdatreasuryDAO_storage.tz: src/**
 	cp src/variants/lambdatreasury/storage.mligo src/implementation_storage.mligo
 	mkdir -p $(OUT)
 	$(BUILD_STORAGE) --output-file $(OUT)/lambdatreasuryDAO_storage.tz \
-      src/base_DAO.mligo -e base_DAO_contract "default_storage( \
-        { admin = (\"$(call require_defined,admin_address)\" : address) \
-				; guardian = (\"$(call require_defined,guardian_address)\" : address) \
-				; governance_token = \
-					{ address = (\"$(call require_defined,governance_token_address)\" : address) \
-					; token_id = ($(call require_defined,governance_token_id) : nat) \
-					} \
-				; start_level = {blocks = $(call require_defined,start_level)} \
-				; metadata_map = ($(call escape_double_quote,$(metadata_map)) : metadata_map) \
-				; freeze_history = ($(call escape_double_quote,$(freeze_history)) : freeze_history_list) \
-        ; config_data = \
-          { max_quorum = { numerator = (($(max_quorum) : nat) * quorum_denominator)/100n } \
-          ; min_quorum = { numerator = (($(min_quorum) : nat) * quorum_denominator)/100n } \
-          ; period = { blocks = ($(period) : nat) } \
-          ; proposal_flush_level = { blocks = ($(proposal_flush_level) : nat) } \
-          ; proposal_expired_level = { blocks = ($(proposal_expired_level) : nat) }\
-          ; fixed_proposal_fee_in_token = ($(fixed_proposal_fee_in_token) : nat) \
-          ; quorum_threshold = { numerator = (($(quorum_threshold) : nat) * quorum_denominator)/100n } \
-          ; quorum_change = { numerator = (($(quorum_change) : nat) * quorum_denominator)/100n } \
-          ; max_quorum_change = { numerator = (($(max_quorum_change) : nat) * quorum_denominator)/100n } \
-          ; governance_total_supply = ($(governance_total_supply) : nat) \
-          } \
+      src/base_DAO.mligo -e base_DAO_contract "default_lambda_treasury_DAO_storage( \
+        { base_data = \
+          { admin = (\"$(call require_defined,admin_address)\" : address) \
+          ; guardian = (\"$(call require_defined,guardian_address)\" : address) \
+          ; governance_token = \
+            { address = (\"$(call require_defined,governance_token_address)\" : address) \
+            ; token_id = ($(call require_defined,governance_token_id) : nat) \
+            } \
+          ; start_level = {blocks = $(call require_defined,start_level)} \
+          ; metadata_map = ($(call escape_double_quote,$(metadata_map)) : metadata_map) \
+          ; freeze_history = ($(call escape_double_quote,$(freeze_history)) : freeze_history_list) \
+          ; config_data = \
+            { max_quorum = { numerator = (($(max_quorum) : nat) * quorum_denominator)/100n } \
+            ; min_quorum = { numerator = (($(min_quorum) : nat) * quorum_denominator)/100n } \
+            ; period = { blocks = ($(period) : nat) } \
+            ; proposal_flush_level = { blocks = ($(proposal_flush_level) : nat) } \
+            ; proposal_expired_level = { blocks = ($(proposal_expired_level) : nat) }\
+            ; fixed_proposal_fee_in_token = ($(fixed_proposal_fee_in_token) : nat) \
+            ; quorum_threshold = { numerator = (($(quorum_threshold) : nat) * quorum_denominator)/100n } \
+            ; quorum_change = { numerator = (($(quorum_change) : nat) * quorum_denominator)/100n } \
+            ; max_quorum_change = { numerator = (($(max_quorum_change) : nat) * quorum_denominator)/100n } \
+            ; governance_total_supply = ($(governance_total_supply) : nat) \
+            }} \
+        ; frozen_scale_value = ($(frozen_scale_value) : nat) \
+        ; frozen_extra_value = ($(frozen_extra_value) : nat) \
+        ; max_proposal_size = ($(max_proposal_size) : nat) \
+        ; slash_scale_value = ($(slash_scale_value) : nat) \
+        ; slash_division_value = ($(slash_division_value) : nat) \
+        ; min_xtz_amount = ($(min_xtz_amount) : tez) \
+        ; max_xtz_amount = ($(max_xtz_amount) : tez) \
         })"
 	# ================= Compilation successful ================= #
 	# See "$(OUT)/lambdatreasuryDAO_storage.tz" for compilation result	#
@@ -435,9 +464,9 @@ $(OUT)/plist_contract.tz: haskell/test/Test/Plist/**
 
 	# strip the surrounding braces and indentation,
 	# note that dollar char is escaped as part of Makefile
-	gsed -i '/^ *$$/d' $(OUT)/plist_contract.tz
-	gsed -i 's/^[{ ] //g' $(OUT)/plist_contract.tz
-	gsed -i '$$s/[}] *$$//' $(OUT)/plist_contract.tz
+	sed -i '/^ *$$/d' $(OUT)/plist_contract.tz
+	sed -i 's/^[{ ] //g' $(OUT)/plist_contract.tz
+	sed -i '$$s/[}] *$$//' $(OUT)/plist_contract.tz
 
 
 clean:

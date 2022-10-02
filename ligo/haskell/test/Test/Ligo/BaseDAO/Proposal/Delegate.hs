@@ -1,5 +1,5 @@
--- SPDX-FileCopyrightText: 2021 TQ Tezos
--- SPDX-License-Identifier: LicenseRef-MIT-TQ
+-- SPDX-FileCopyrightText: 2021 Tezos Commons
+-- SPDX-License-Identifier: LicenseRef-MIT-TC
 
 module Test.Ligo.BaseDAO.Proposal.Delegate
   ( test_UpdateDelegates
@@ -21,14 +21,14 @@ test_UpdateDelegates :: TestTree
 test_UpdateDelegates =
   testGroup "Update_delegates:"
     [ testScenario "add/remove a delgate" $ scenario $
-        addRemoveDelegate (originateLigoDaoWithConfigDesc dynRecUnsafe)
+        addRemoveDelegate (originateLigoDaoWithConfigDesc @'Base ())
     , testScenario "update multiple delegates" $ scenario $
-        updateDelegates (originateLigoDaoWithConfigDesc dynRecUnsafe) checkIfDelegateExists
+        updateDelegates (originateLigoDaoWithConfigDesc @'Base ()) checkIfDelegateExists
     ]
 
 addRemoveDelegate
-  :: (MonadCleveland caps base m, HasCallStack)
-  => (ConfigDesc Config -> OriginateFn m)
+  :: (MonadCleveland caps m, HasCallStack)
+  => (ConfigDesc Config -> OriginateFn 'Base m)
   -> m ()
 addRemoveDelegate originateFn = do
   DaoOriginateData{..} <- originateFn testConfig defaultQuorumThreshold
@@ -70,11 +70,10 @@ addRemoveDelegate originateFn = do
   withSender dodOperator1 $ call dodDao (Call @"Propose") (params 2)
     & expectFailedWith notDelegate
 
-
 updateDelegates
-  :: (MonadCleveland caps base m, HasCallStack)
-  => (ConfigDesc Config -> OriginateFn m)
-  -> (TAddress Parameter -> Delegate -> m Bool)
+  :: (MonadCleveland caps m, HasCallStack)
+  => (ConfigDesc Config -> OriginateFn 'Base m)
+  -> (TAddress Parameter () -> Delegate -> m Bool)
   -> m ()
 updateDelegates originateFn isDelegateFn = do
   DaoOriginateData{..} <- originateFn testConfig defaultQuorumThreshold

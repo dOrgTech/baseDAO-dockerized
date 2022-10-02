@@ -1,5 +1,5 @@
--- SPDX-FileCopyrightText: 2021 TQ Tezos
--- SPDX-License-Identifier: LicenseRef-MIT-TQ
+-- SPDX-FileCopyrightText: 2021 Tezos Commons
+-- SPDX-License-Identifier: LicenseRef-MIT-TC
 
 {-# LANGUAGE ApplicativeDo #-}
 module Main
@@ -10,23 +10,27 @@ import Universum
 
 import Data.Aeson.Encode.Pretty (encodePretty)
 import Data.Version (showVersion)
-import qualified Options.Applicative as Opt
+import Options.Applicative qualified as Opt
 import Paths_baseDAO_ligo_meta (version)
 
 import Morley.Util.Main
 
-import Ligo.BaseDAO.Types (Parameter)
+import Ligo.BaseDAO.RegistryDAO.Types (RegistryCustomEpParam)
+import Ligo.BaseDAO.TZIP16Metadata
+import Ligo.BaseDAO.TreasuryDAO.Types (TreasuryCustomEpParam)
+import Ligo.BaseDAO.Types (Parameter, Parameter')
 import Ligo.Typescript
 import Morley.Util.CLI
 import Morley.Util.Named
-import Ligo.BaseDAO.TZIP16Metadata
 
 main :: IO ()
 main = wrapMain $ do
   cmdLnArgs <- Opt.execParser programInfo
   case cmdLnArgs of
-    GenerateTypescript fp ->
+    GenerateTypescript fp -> do
       void $ generateTs @Parameter fp
+      void $ generateTs @(Parameter' RegistryCustomEpParam) fp
+      void $ generateTs @(Parameter' TreasuryCustomEpParam) fp
     PrintMetadata mc ->
       putTextLn . decodeUtf8 . encodePretty $
         knownBaseDAOMetadata (mkMetadataSettings mc)

@@ -9,14 +9,24 @@ version:        0.4.0.0
 description:    Tools and tests for the LIGO baseDAO contract.
 author:         Serokell, Tocqueville Group
 maintainer:     Serokell, Tocqueville Group
-copyright:      2021 TQ Tezos
+copyright:      2020-2021 TQ Tezos, 2021-2022 Tezos Commons
 license:        MIT
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
-    resources/baseDAO.tz
+    resources/lambdaDAO.tz
+    resources/lambdaDAO_storage.tz
+    resources/lambdaregistryDAO.tz
+    resources/lambdaregistryDAO_storage.tz
+    resources/lambdatreasuryDAO.tz
+    resources/lambdatreasuryDAO_storage.tz
+    resources/registryDAO.tz
+    resources/treasuryDAO.tz
+    resources/trivialDAO.tz
+    resources/trivialDAO_storage.tz
     resources/registryDAO_storage.tz
     resources/treasuryDAO_storage.tz
+    resources/plist_contract.tz
 extra-doc-files:
     README.md
 
@@ -28,6 +38,9 @@ library
   exposed-modules:
       Ligo.BaseDAO.Common.Types
       Ligo.BaseDAO.ErrorCodes
+      Ligo.BaseDAO.LambdaDAO.Types
+      Ligo.BaseDAO.RegistryDAO.Types
+      Ligo.BaseDAO.TreasuryDAO.Types
       Ligo.BaseDAO.Types
       Ligo.BaseDAO.TZIP16Metadata
       Ligo.Typescript
@@ -59,6 +72,7 @@ library
       FlexibleInstances
       GADTs
       GeneralizedNewtypeDeriving
+      ImportQualifiedPost
       LambdaCase
       MultiParamTypeClasses
       MultiWayIf
@@ -97,7 +111,6 @@ library
     , fmt
     , lorentz
     , morley
-    , morley-client
     , morley-ledgers
     , morley-metadata
     , morley-prelude
@@ -135,6 +148,7 @@ executable baseDAO-ligo-meta
       FlexibleInstances
       GADTs
       GeneralizedNewtypeDeriving
+      ImportQualifiedPost
       LambdaCase
       MultiParamTypeClasses
       MultiWayIf
@@ -187,6 +201,7 @@ test-suite baseDAO-test
       SMT.Model.BaseDAO.Permit
       SMT.Model.BaseDAO.Proposal
       SMT.Model.BaseDAO.Proposal.FreezeHistory
+      SMT.Model.BaseDAO.Proposal.Plist
       SMT.Model.BaseDAO.Proposal.QuorumThreshold
       SMT.Model.BaseDAO.Token
       SMT.Model.BaseDAO.Types
@@ -199,6 +214,7 @@ test-suite baseDAO-test
       Test.Ligo.BaseDAO.Management
       Test.Ligo.BaseDAO.Management.TransferOwnership
       Test.Ligo.BaseDAO.OffChainViews
+      Test.Ligo.BaseDAO.Plist
       Test.Ligo.BaseDAO.Proposal
       Test.Ligo.BaseDAO.Proposal.Config
       Test.Ligo.BaseDAO.Proposal.Delegate
@@ -209,10 +225,33 @@ test-suite baseDAO-test
       Test.Ligo.BaseDAO.Proposal.Vote
       Test.Ligo.BaseDAO.Token
       Test.Ligo.BaseDAO.Types
+      Test.Ligo.Common
+      Test.Ligo.LambdaDAO
+      Test.Ligo.LambdaRegistryDAO
+      Test.Ligo.LambdaTreasuryDAO
       Test.Ligo.RegistryDAO
+      Test.Ligo.RegistryDAO.Tests.Common
+      Test.Ligo.RegistryDAO.Tests.EmptyProposal
+      Test.Ligo.RegistryDAO.Tests.ExecuteWonProposal
+      Test.Ligo.RegistryDAO.Tests.FlushRegistryUpdates
+      Test.Ligo.RegistryDAO.Tests.FlushTransferProposal
+      Test.Ligo.RegistryDAO.Tests.LargeProposal
+      Test.Ligo.RegistryDAO.Tests.NotEnoughFrozen
+      Test.Ligo.RegistryDAO.Tests.ProposeXtzProposal
+      Test.Ligo.RegistryDAO.Tests.RegistryView
+      Test.Ligo.RegistryDAO.Tests.RequiredFrozen
+      Test.Ligo.RegistryDAO.Tests.TokensToBurn
+      Test.Ligo.RegistryDAO.Tests.UpdateDelegate
+      Test.Ligo.RegistryDAO.Tests.UpdateGuardian
+      Test.Ligo.RegistryDAO.Tests.UpdateReceivers
+      Test.Ligo.RegistryDAO.Tests.UpdateReceiversDelete
+      Test.Ligo.RegistryDAO.Tests.ZeroXtz
       Test.Ligo.RegistryDAO.Types
       Test.Ligo.TreasuryDAO
       Test.Ligo.TreasuryDAO.Types
+      Test.Plist.Contract
+      Test.Plist.Property
+      Test.Plist.Type
       Tree
       Paths_baseDAO_ligo_meta
   hs-source-dirs:
@@ -238,6 +277,7 @@ test-suite baseDAO-test
       FlexibleInstances
       GADTs
       GeneralizedNewtypeDeriving
+      ImportQualifiedPost
       LambdaCase
       MultiParamTypeClasses
       MultiWayIf

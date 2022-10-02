@@ -1,5 +1,5 @@
--- SPDX-FileCopyrightText: 2021 TQ Tezos
--- SPDX-License-Identifier: LicenseRef-MIT-TQ
+-- SPDX-FileCopyrightText: 2021 Tezos Commons
+-- SPDX-License-Identifier: LicenseRef-MIT-TC
 --
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 -- For all the incomplete list pattern matches in the calls to the
@@ -11,7 +11,7 @@ module Test.Ligo.BaseDAO.Management
 
 import Universum
 
-import Named (defaults, (!))
+import Named (defaults)
 import Test.Tasty (TestTree, testGroup)
 
 import Lorentz as L hiding (now, (>>))
@@ -29,13 +29,13 @@ import Test.Ligo.BaseDAO.Management.TransferOwnership
 -- the tests. It is not pretty, but IMO it makes the test a bit less
 -- verbose.
 withOriginated
-  :: MonadCleveland caps base m
+  :: MonadCleveland caps m
   => Integer
-  -> ([Address] -> FullStorage)
-  -> ([Address] -> TAddress Parameter -> m a)
+  -> ([Address] -> Storage)
+  -> ([Address] -> TAddress Parameter () -> m a)
   -> m a
 withOriginated addrCount storageFn tests = do
-  addresses <- mapM (\x -> newAddress $ fromString ("address" <> (show x))) [1 ..addrCount]
+  addresses <- mapM (\x -> refillable $ newAddress $ fromString ("address" <> (show x))) [1 ..addrCount]
   baseDao <- originateUntyped $ UntypedOriginateData
     { uodName = "BaseDAO Test Contract"
     , uodBalance = zeroMutez
@@ -93,23 +93,11 @@ test_BaseDAO_Management =
   ]
 
   where
-    testCustomEntrypoint :: ('[(ByteString, FullStorage)] :-> '[([Operation], Storage)])
-    testCustomEntrypoint =
-      -- Unpack an address from packed bytes and set it as admin
-      L.unpair #
-      L.unpackRaw @Address #
-      L.ifNone
-        (L.unit # L.failWith)
-        (L.dip (L.toField #fsStorage) # setField #sAdmin) #
-      L.nil # pair
 
-    initialStorage currentLevel admin = mkFullStorage
+    initialStorage currentLevel admin = mkStorage' @'Base
       ! #admin admin
-      ! #extra dynRecUnsafe
+      ! #extra ()
       ! #metadata mempty
       ! #level currentLevel
       ! #tokenAddress genesisAddress
-      ! #customEps
-          [ ([mt|testCustomEp|], lPackValueRaw testCustomEntrypoint)
-          ]
       ! defaults

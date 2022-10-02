@@ -1,5 +1,5 @@
--- SPDX-FileCopyrightText: 2021 TQ Tezos
--- SPDX-License-Identifier: LicenseRef-MIT-TQ
+-- SPDX-FileCopyrightText: 2021 Tezos Commons
+-- SPDX-License-Identifier: LicenseRef-MIT-TC
 
 module Test.Ligo.TreasuryDAO.Types
   ( TransferProposal (..)
@@ -20,10 +20,10 @@ data TransferProposal = TransferProposal
   , tpTransfers :: [TransferType]
   }
 
+customGeneric "TransferProposal" ligoLayout
+
 instance HasAnnotation TransferProposal where
   annOptions = baseDaoAnnOptions
-
-customGeneric "TransferProposal" ligoLayout
 
 deriving anyclass instance IsoValue TransferProposal
 
@@ -33,8 +33,8 @@ data TreasuryDaoProposalMetadata
   | Update_guardian Address
   | Update_contract_delegate (Maybe KeyHash)
 
-instance HasAnnotation TreasuryDaoProposalMetadata where
-  annOptions = baseDaoAnnOptions
-
 customGeneric "TreasuryDaoProposalMetadata" ligoLayout
 deriving anyclass instance IsoValue TreasuryDaoProposalMetadata
+
+instance HasAnnotation TreasuryDaoProposalMetadata where
+  annOptions = baseDaoAnnOptions

@@ -1,5 +1,5 @@
--- SPDX-FileCopyrightText: 2021 TQ Tezos
--- SPDX-License-Identifier: LicenseRef-MIT-TQ
+-- SPDX-FileCopyrightText: 2021 Tezos Commons
+-- SPDX-License-Identifier: LicenseRef-MIT-TC
 
 module Test.Ligo.BaseDAO.OffChainViews
   ( test_FA2
@@ -22,22 +22,23 @@ import Test.Tasty.HUnit (testCase)
 
 import Ligo.BaseDAO.TZIP16Metadata
 import Ligo.BaseDAO.Types
-import qualified Lorentz.Contracts.Spec.FA2Interface as FA2
+import Lorentz.Contracts.Spec.FA2Interface qualified as FA2
 import Lorentz.Contracts.Spec.TZIP16Interface
 
 offChainViewStorage :: Storage
 offChainViewStorage =
   (mkStorage
   ! #admin addr
-  ! #extra dynRecUnsafe
+  ! #extra ()
   ! #metadata mempty
   ! #level 100
   ! #tokenAddress genesisAddress
   ! #quorumThreshold (mkQuorumThreshold 1 100)
+  ! #config defaultConfig
   ! defaults
   )
   where
-    addr = unsafeParseAddress "tz1M6dcor9QNTFr9Ri68cBYvpxrogZaMttuE"
+    addr = [ta|tz1M6dcor9QNTFr9Ri68cBYvpxrogZaMttuE|]
 
 test_FA2 :: TestTree
 test_FA2 =

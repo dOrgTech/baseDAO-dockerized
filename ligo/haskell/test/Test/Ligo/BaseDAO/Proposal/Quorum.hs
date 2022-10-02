@@ -1,5 +1,5 @@
--- SPDX-FileCopyrightText: 2021 TQ Tezos
--- SPDX-License-Identifier: LicenseRef-MIT-TQ
+-- SPDX-FileCopyrightText: 2021 Tezos Commons
+-- SPDX-License-Identifier: LicenseRef-MIT-TC
 
 -- | Contains tests on @propose@ entrypoint logic for testing the  behaviour
 -- associated with quorum threshold and its dynamic updates.
@@ -15,8 +15,8 @@ module Test.Ligo.BaseDAO.Proposal.Quorum
 import Universum
 
 import Lorentz hiding (assert, div, (>>))
-import Test.Cleveland
 import Morley.Util.Named
+import Test.Cleveland
 
 import Ligo.BaseDAO.Types
 import Test.Ligo.BaseDAO.Common
@@ -47,8 +47,8 @@ calculateThreshold mcp cp (GovernanceTotalSupply gts) staked oldQt =
     fractionToNumerator = mkQuorumThreshold
 
 checkQuorumThresholdDynamicUpdate
-  :: forall caps base m. (MonadCleveland caps base m, HasCallStack)
-  => (ConfigDesc Config -> OriginateFn m)
+  :: forall caps m. (MonadCleveland caps m, HasCallStack)
+  => (ConfigDesc Config -> OriginateFn 'Base m)
   -> m ()
 checkQuorumThresholdDynamicUpdate originateFn = do
   DaoOriginateData{..} <- originateFn
@@ -93,8 +93,8 @@ checkQuorumThresholdDynamicUpdate originateFn = do
   assert (quorumThresholdActual == quorumThresholdExpected) "Unexpected quorumThreshold after update"
 
 checkQuorumThresholdDynamicUpdateUpperBound
-  :: forall caps base m. (MonadCleveland caps base m, HasCallStack)
-  => (ConfigDesc Config -> OriginateFn m)
+  :: forall caps m. (MonadCleveland caps m, HasCallStack)
+  => (ConfigDesc Config -> OriginateFn 'Base m)
   -> m ()
 checkQuorumThresholdDynamicUpdateUpperBound originateFn = do
   DaoOriginateData{..} <- originateFn
@@ -138,8 +138,8 @@ checkQuorumThresholdDynamicUpdateUpperBound originateFn = do
   assert (quorumThresholdActual == quorumThresholdExpected) "Unexpected quorumThreshold after update"
 
 checkQuorumThresholdDynamicUpdateLowerBound
-  :: forall caps base m. (MonadCleveland caps base m, HasCallStack)
-  => (ConfigDesc Config -> OriginateFn m)
+  :: forall caps m. (MonadCleveland caps m, HasCallStack)
+  => (ConfigDesc Config -> OriginateFn 'Base m)
   -> m ()
 checkQuorumThresholdDynamicUpdateLowerBound originateFn = do
   DaoOriginateData{..} <- originateFn
@@ -183,8 +183,8 @@ checkQuorumThresholdDynamicUpdateLowerBound originateFn = do
   assert (quorumThresholdActual == quorumThresholdExpected) "Unexpected quorumThreshold after update"
 
 checkProposalSavesQuorum
-  :: forall caps base m. (MonadCleveland caps base m, HasCallStack)
-  => (ConfigDesc Config -> OriginateFn m)
+  :: forall caps m. (MonadCleveland caps m, HasCallStack)
+  => (ConfigDesc Config -> OriginateFn 'Base m)
   -> m ()
 checkProposalSavesQuorum originateFn = do
   DaoOriginateData{..} <- originateFn
@@ -228,11 +228,11 @@ checkProposalSavesQuorum originateFn = do
     "BaseDAO contract did not store quorum threshold in proposal as expected"
 
 proposalIsRejectedIfNoQuorum
-  :: (MonadCleveland caps base m, HasCallStack)
+  :: (MonadCleveland caps m, HasCallStack)
   => m ()
 proposalIsRejectedIfNoQuorum = do
   DaoOriginateData{..} <-
-    originateLigoDaoWithConfigDesc dynRecUnsafe
+    originateLigoDaoWithConfigDesc @'Base ()
       ((ConfigDesc $ Period 60)
       >>- (ConfigDesc (FixedFee 42))
       >>- (ConfigDesc configConsts{ cmProposalExpiredTime = Just 1800 })
@@ -276,14 +276,14 @@ proposalIsRejectedIfNoQuorum = do
   advanceToLevel (proposalStart + 2*dodPeriod)
   withSender admin $ call dao (Call @"Flush") 100
 
-  checkBalance dao proposer 10 -- We expect 42 tokens to have burned
+  checkBalance dao proposer 9 -- We expect 42 + 1 tokens to have burned
 
 proposalSucceedsIfUpVotesGtDownvotesAndQuorum
-  :: (MonadCleveland caps base m, HasCallStack)
+  :: (MonadCleveland caps m, HasCallStack)
   => m ()
 proposalSucceedsIfUpVotesGtDownvotesAndQuorum = do
   DaoOriginateData{..} <-
-    originateLigoDaoWithConfigDesc dynRecUnsafe
+    originateLigoDaoWithConfigDesc @'Base ()
       (testConfig
       >>- (ConfigDesc $ Period 60)
       >>- (ConfigDesc (FixedFee 42))
@@ -328,4 +328,3 @@ proposalSucceedsIfUpVotesGtDownvotesAndQuorum = do
   withSender admin $ call dao (Call @"Flush") 100
 
   checkBalance dao proposer 52
-

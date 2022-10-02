@@ -1,5 +1,5 @@
--- SPDX-FileCopyrightText: 2021 TQ Tezos
--- SPDX-License-Identifier: LicenseRef-MIT-TQ
+-- SPDX-FileCopyrightText: 2022 Tezos Commons
+-- SPDX-License-Identifier: LicenseRef-MIT-TC
 
 module SMT.Model.BaseDAO.Proposal.QuorumThreshold
   ( updateQuorum
@@ -21,7 +21,7 @@ bound minQt maxQt qt
 stageToCycle :: Natural -> Natural
 stageToCycle p = (p + 1) `div` 2
 
-calculateNewQuorumThreshold :: ModelT QuorumThreshold
+calculateNewQuorumThreshold :: ModelT cep QuorumThreshold
 calculateNewQuorumThreshold = do
   store <- getStore
   config <- getConfig
@@ -61,7 +61,7 @@ calculateNewQuorumThreshold = do
   else
     pure $ QuorumThreshold $ fromIntegral newQuorum
 
-updateQuorum :: Natural -> ModelT ()
+updateQuorum :: Natural -> ModelT cep ()
 updateQuorum currentLevel = do
   store <- getStore
   let currentCycle = stageToCycle currentLevel

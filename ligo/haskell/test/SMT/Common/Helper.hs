@@ -1,33 +1,16 @@
--- SPDX-FileCopyrightText: 2021 TQ Tezos
--- SPDX-License-Identifier: LicenseRef-MIT-TQ
+-- SPDX-FileCopyrightText: 2021 Tezos Commons
+-- SPDX-License-Identifier: LicenseRef-MIT-TC
 
 module SMT.Common.Helper
-  ( findBigMap
-  , handleTransfer
-  , unpackWithError
+  ( handleTransfer
   ) where
 
 import Universum hiding (drop, swap)
 
-import qualified Data.Map as Map
-
 import Lorentz hiding (now, (>>))
-import Morley.Michelson.Typed.Haskell.Value (BigMap(..))
 
 import Ligo.BaseDAO.Common.Types
-import Ligo.BaseDAO.Types
 import SMT.Model.BaseDAO.Types
-
-
-findBigMap :: MText -> ContractExtra -> ByteString
-findBigMap field extras =
-  Map.lookup field (bmMap $ unDynamic extras)
-    & fromMaybe (error "MISSING_VALUE")
-
-unpackWithError :: forall a. (NiceUnpackedValue a) => ByteString -> a
-unpackWithError packed =
-  lUnpackValueRaw @a packed
-    & fromRight (error "UNPACKING_FAILED")
 
 handleTransfer :: [SimpleOperation] -> TransferType -> [SimpleOperation]
 handleTransfer ops transferType =
@@ -35,7 +18,7 @@ handleTransfer ops transferType =
     Token_transfer_type tt ->
       ( FA2TransferOperation
           (tt & ttContractAddress)
-          (tt & ttTransferList) (toMutez 0)
+          (tt & ttTransferList) zeroMutez
       ) : ops
     Xtz_transfer_type xt ->
       ( OtherOperation (xt & xtRecipient) (show ()) (xt & xtAmount)
