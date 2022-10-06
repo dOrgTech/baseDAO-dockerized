@@ -5,10 +5,12 @@
                         { Elt "frozen_extra_value" 0x05008080a0f6f4acdbe01b ;
                           Elt "frozen_scale_value" 0x050000 ;
                           Elt "max_proposal_size" 0x05008427 ;
-                          Elt "max_xtz_amount" 0x050080c0a8ca9a3a ;
+                          Elt "max_xtz_amount" 0x050080caac74 ;
                           Elt "min_xtz_amount" 0x050000 ;
+                          Elt "registry" 0x050200000000 ;
+                          Elt "registry_affected" 0x050200000000 ;
                           Elt "slash_division_value" 0x0500a401 ;
-                          Elt "slash_scale_value" 0x0500a401 }
+                          Elt "slash_scale_value" 0x050000 }
                         { Elt "configuration_proposal"
                               (Pair (Pair { PUSH (lambda (pair (pair string nat) (map string bytes)) (map string bytes))
                                                  { UNPAIR ;
@@ -321,7 +323,7 @@
                   0)
             (Pair (Pair "tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb"
                         { Elt ""
-                              0x74657a6f732d73746f726167653a2f2f4b5431446676416e7a396331486b4b50554e3152787a446a69324e38784e4a6e4a4b374c2f6d657461646174614b6579 })
+                              0x74657a6f732d73746f726167653a2f2f4b54314441746a545652584a393548736b58467136354234717477463243364d683632582f6d657461646174614b6579 })
                   None
                   "tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb")
             (Pair 0 {})
