@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: LicenseRef-MIT-TC
 
 # Ligo executable
-LIGO=docker run --rm -v $(PWD):$(PWD) -w $(PWD) ligolang/ligo:0.46.0
+# LIGO=docker run --rm -v $(PWD):$(PWD) -w $(PWD) ligolang/ligo:0.46.0
+LIGO=$(ligo)
 
 # Morley executable used for contract optimization
 MORLEY ?= morley
