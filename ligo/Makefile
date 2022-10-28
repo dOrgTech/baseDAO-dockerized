@@ -3,7 +3,7 @@
 
 # Ligo executable
 # LIGO=docker run --rm -v $(PWD):$(PWD) -w $(PWD) ligolang/ligo:0.46.0
-LIGO=$(ligo)
+LIGO ?= ligo
 
 # Morley executable used for contract optimization
 MORLEY ?= morley
@@ -13,13 +13,13 @@ MORLEY ?= morley
 OPTIMIZE ?= false
 
 # Compile code
-BUILD = $(LIGO) compile-contract --syntax cameligo
+BUILD = $(LIGO) compile contract --syntax cameligo
 
 # Compile storage
-BUILD_STORAGE = $(LIGO) compile-storage --syntax cameligo
+BUILD_STORAGE = $(LIGO) compile storage --syntax cameligo
 
 # Compile parameter
-BUILD_PARAMETER = $(LIGO) compile-parameter --syntax cameligo
+BUILD_PARAMETER = $(LIGO) compile parameter --syntax cameligo
 
 # Utility function to escape single quotes
 escape_quote = $(subst ','\'',$(1))
