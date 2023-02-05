@@ -3,7 +3,7 @@
 
 # Ligo executable
 # LIGO=docker run --rm -v $(PWD):$(PWD) -w $(PWD) ligolang/ligo:0.46.0
-LIGO ?= ligo
+LIGO ?= docker run --rm -v $(PWD):$(PWD) -w $(PWD) ligolang/ligo:0.46.0
 
 # Morley executable used for contract optimization
 MORLEY ?= morley
@@ -49,9 +49,9 @@ $(OUT)/%DAO.tz: src/**/**
 
 	# strip the surrounding braces and indentation,
 	# note that dollar char is escaped as part of Makefile
-	sed -i '/^ *$$/d' $@
-	sed -i 's/^[{ ] //g' $@
-	sed -i '$$s/[}] *$$//' $@
+	gsed -i '/^ *$$/d' $@
+	gsed -i 's/^[{ ] //g' $@
+	gsed -i '$$s/[}] *$$//' $@
 ifeq ($(OPTIMIZE), true)
 	# ============== Optimizing contract ============== #
 	$(MORLEY) optimize --contract $@ --output $@
@@ -465,9 +465,9 @@ $(OUT)/plist_contract.tz: haskell/test/Test/Plist/**
 
 	# strip the surrounding braces and indentation,
 	# note that dollar char is escaped as part of Makefile
-	sed -i '/^ *$$/d' $(OUT)/plist_contract.tz
-	sed -i 's/^[{ ] //g' $(OUT)/plist_contract.tz
-	sed -i '$$s/[}] *$$//' $(OUT)/plist_contract.tz
+	gsed -i '/^ *$$/d' $(OUT)/plist_contract.tz
+	gsed -i 's/^[{ ] //g' $(OUT)/plist_contract.tz
+	gsed -i '$$s/[}] *$$//' $(OUT)/plist_contract.tz
 
 
 clean:

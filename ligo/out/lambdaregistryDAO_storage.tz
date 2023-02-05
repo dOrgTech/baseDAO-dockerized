@@ -1,11 +1,14 @@
 (Pair (Pair (Pair (Pair (Pair "tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb"
-                              (Pair (Pair (Pair 0 1000000000000000000000000000) 990000 990000) (Pair 10000 5) 20 15)
+                              (Pair (Pair (Pair 0 1000010000000200000000000000000) 900000 900000)
+                                    (Pair 10000 5)
+                                    20
+                                    15)
                               50000)
                         {}
                         { Elt "frozen_extra_value" 0x05008080a0f6f4acdbe01b ;
                           Elt "frozen_scale_value" 0x050000 ;
                           Elt "max_proposal_size" 0x05008427 ;
-                          Elt "max_xtz_amount" 0x050080caac74 ;
+                          Elt "max_xtz_amount" 0x050080d3a675 ;
                           Elt "min_xtz_amount" 0x050000 ;
                           Elt "registry" 0x050200000000 ;
                           Elt "registry_affected" 0x050200000000 ;
@@ -92,10 +95,13 @@
                                               (pair (pair (nat %agora_post_id) (list %registry_diff (pair string (option string))))
                                                     (list %transfers
                                                        (or (pair %xtz_transfer_type (mutez %amount) (address %recipient))
-                                                           (pair %token_transfer_type
-                                                              (address %contract_address)
-                                                              (list %transfer_list
-                                                                 (pair (address %from_) (list %txs (pair (address %to_) (nat %token_id) (nat %amount))))))))) ;
+                                                           (or (pair %token_transfer_type
+                                                                  (address %contract_address)
+                                                                  (list %transfer_list
+                                                                     (pair (address %from_) (list %txs (pair (address %to_) (nat %token_id) (nat %amount))))))
+                                                               (pair %legacy_token_transfer_type
+                                                                  (address %contract_address)
+                                                                  (pair %transfer (address %from) (pair %target (address %to) (nat %value)))))))) ;
                                             IF_NONE
                                               { DROP ; PUSH string "decoding transfer_proposal failed" ; FAILWITH }
                                               { DUP ;
@@ -148,13 +154,20 @@
                                                            IF_NONE
                                                              { DROP 2 ; PUSH nat 121 ; FAILWITH }
                                                              { DIG 2 ; SWAP ; DIG 2 ; CAR ; UNIT ; TRANSFER_TOKENS ; CONS } }
-                                                         { DUP ;
-                                                           CAR ;
-                                                           CONTRACT %transfer
-                                                             (list (pair (address %from_) (list %txs (pair (address %to_) (nat %token_id) (nat %amount))))) ;
-                                                           IF_NONE
-                                                             { DROP 2 ; PUSH nat 121 ; FAILWITH }
-                                                             { DIG 2 ; SWAP ; PUSH mutez 0 ; DIG 3 ; CDR ; TRANSFER_TOKENS ; CONS } } } ;
+                                                         { IF_LEFT
+                                                             { DUP ;
+                                                               CAR ;
+                                                               CONTRACT %transfer
+                                                                 (list (pair (address %from_) (list %txs (pair (address %to_) (nat %token_id) (nat %amount))))) ;
+                                                               IF_NONE
+                                                                 { DROP 2 ; PUSH nat 121 ; FAILWITH }
+                                                                 { DIG 2 ; SWAP ; PUSH mutez 0 ; DIG 3 ; CDR ; TRANSFER_TOKENS ; CONS } }
+                                                             { DUP ;
+                                                               CAR ;
+                                                               CONTRACT %transfer (pair (address %from) (pair %target (address %to) (nat %value))) ;
+                                                               IF_NONE
+                                                                 { DROP 2 ; PUSH nat 121 ; FAILWITH }
+                                                                 { DIG 2 ; SWAP ; PUSH mutez 0 ; DIG 3 ; CDR ; TRANSFER_TOKENS ; CONS } } } } ;
                                                 SWAP ;
                                                 UNPAIR 3 ;
                                                 UPDATE ;
@@ -176,10 +189,13 @@
                                                 (pair (pair (nat %agora_post_id) (list %registry_diff (pair string (option string))))
                                                       (list %transfers
                                                          (or (pair %xtz_transfer_type (mutez %amount) (address %recipient))
-                                                             (pair %token_transfer_type
-                                                                (address %contract_address)
-                                                                (list %transfer_list
-                                                                   (pair (address %from_) (list %txs (pair (address %to_) (nat %token_id) (nat %amount))))))))) ;
+                                                             (or (pair %token_transfer_type
+                                                                    (address %contract_address)
+                                                                    (list %transfer_list
+                                                                       (pair (address %from_) (list %txs (pair (address %to_) (nat %token_id) (nat %amount))))))
+                                                                 (pair %legacy_token_transfer_type
+                                                                    (address %contract_address)
+                                                                    (pair %transfer (address %from) (pair %target (address %to) (nat %value)))))))) ;
                                               IF_NONE
                                                 { DROP 2 ; PUSH string "transfer_proposal decoding failed" ; FAILWITH }
                                                 { DUP 2 ;
@@ -216,7 +232,7 @@
                                                                        GT ;
                                                                        IF { PUSH string "HIGH_XTZ" ; SOME } { NONE string } } } ;
                                                              IF_NONE {} { PUSH nat 102 ; PAIR ; FAILWITH } }
-                                                           { DROP } } ;
+                                                           { IF_LEFT { DROP } { DROP } } } ;
                                                   DROP 2 ;
                                                   UNIT } } })
                                     True) ;
@@ -319,15 +335,15 @@
                                     True) })
                   (Pair {} 0)
                   0
-                  "KT1UTgwuMMKw48b4Kw1bkNVYmWr7j2xCsBsG"
+                  "KT1QVMpfK12j9v8wy8s4v2EK3EHHH8jvisnW"
                   0)
             (Pair (Pair "tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb"
                         { Elt ""
-                              0x74657a6f732d73746f726167653a2f2f4b54314441746a545652584a393548736b58467136354234717477463243364d683632582f6d657461646174614b6579 })
+                              0x74657a6f732d73746f726167653a2f2f4b54315771354e374669517443453432337176665839733738723868517550546346776e2f6d657461646174614b6579 })
                   None
                   "tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb")
             (Pair 0 {})
             (Pair (Pair 1 20000) 0)
             {})
-      100)
+      1940819)
 
