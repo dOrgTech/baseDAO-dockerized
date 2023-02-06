@@ -1,5 +1,5 @@
--- SPDX-FileCopyrightText: 2021 TQ Tezos
--- SPDX-License-Identifier: LicenseRef-MIT-TQ
+-- SPDX-FileCopyrightText: 2021 Tezos Commons
+-- SPDX-License-Identifier: LicenseRef-MIT-TC
 
 module Test.Ligo.BaseDAO.Token
   ( test_BaseDAO_Token
@@ -8,7 +8,7 @@ module Test.Ligo.BaseDAO.Token
 import Universum
 
 import Lorentz hiding (assert, (>>))
-import qualified Lorentz.Contracts.Spec.FA2Interface as FA2
+import Lorentz.Contracts.Spec.FA2Interface qualified as FA2
 import Morley.Michelson.Runtime.GState (genesisAddress1, genesisAddress2)
 import Test.Cleveland
 import Test.Tasty (TestTree, testGroup)
@@ -22,23 +22,23 @@ import Test.Ligo.BaseDAO.Common
 test_BaseDAO_Token :: TestTree
 test_BaseDAO_Token = testGroup "BaseDAO non-FA2 token tests:"
   [ testScenario "can call transfer tokens entrypoint" $ scenario
-      $ transferContractTokensScenario originateLigoDao
+      $ transferContractTokensScenario (originateLigoDao @'Base)
   ,  testScenario "can transfer funds to the contract" $ scenario
-      $ ensureXtzTransfer originateLigoDao
+      $ ensureXtzTransfer (originateLigoDao @'Base)
   ]
 
 transferContractTokensScenario
-  :: MonadCleveland caps base m
-  => OriginateFn m -> m ()
+  :: MonadCleveland caps m
+  => OriginateFn 'Base m -> m ()
 transferContractTokensScenario originateFn = do
   DaoOriginateData{..} <- originateFn defaultQuorumThreshold
   let target_owner1 = genesisAddress1
   let target_owner2 = genesisAddress2
 
   let transferParams = [ FA2.TransferItem
-            { tiFrom = target_owner1
+            { tiFrom = toAddress target_owner1
             , tiTxs = [ FA2.TransferDestination
-                { tdTo = target_owner2
+                { tdTo = toAddress target_owner2
                 , tdTokenId = FA2.theTokenId
                 , tdAmount = 10
                 } ]
@@ -49,21 +49,21 @@ transferContractTokensScenario originateFn = do
         }
 
   withSender dodOwner1 $
-    call dodDao (Call @"Transfer_contract_tokens") param
+    (transfer dodDao $ calling (ep @"Transfer_contract_tokens") param)
     & expectFailedWith notAdmin
 
   withSender dodAdmin $
-    call dodDao (Call @"Transfer_contract_tokens") param
+    transfer dodDao $ calling (ep @"Transfer_contract_tokens") param
 
-  tcStorage <- getStorage @[[FA2.TransferItem]] (unTAddress dodTokenContract)
+  tcStorage <- getStorage @[[FA2.TransferItem]] dodTokenContract
 
   assert (tcStorage ==
-    ([ [ FA2.TransferItem { tiFrom = target_owner1, tiTxs = [FA2.TransferDestination { tdTo = target_owner2, tdTokenId = FA2.theTokenId, tdAmount = 10 }] } ]
+    ([ [ FA2.TransferItem { tiFrom = toAddress target_owner1, tiTxs = [FA2.TransferDestination { tdTo = toAddress target_owner2, tdTokenId = FA2.theTokenId, tdAmount = 10 }] } ]
       ])) "Unexpected FA2 transfers"
 
 ensureXtzTransfer
-  :: MonadCleveland caps base m
-  => OriginateFn m -> m ()
+  :: MonadCleveland caps m
+  => OriginateFn a m -> m ()
 ensureXtzTransfer originateFn = do
   DaoOriginateData{..} <- originateFn defaultQuorumThreshold
   sendXtz dodDao

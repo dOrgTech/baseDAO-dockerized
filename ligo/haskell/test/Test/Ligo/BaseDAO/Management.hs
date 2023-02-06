@@ -1,9 +1,5 @@
--- SPDX-FileCopyrightText: 2021 TQ Tezos
--- SPDX-License-Identifier: LicenseRef-MIT-TQ
---
-{-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
--- For all the incomplete list pattern matches in the calls to the
--- `withOriginated` function
+-- SPDX-FileCopyrightText: 2021 Tezos Commons
+-- SPDX-License-Identifier: LicenseRef-MIT-TC
 
 module Test.Ligo.BaseDAO.Management
   ( test_BaseDAO_Management
@@ -11,39 +7,33 @@ module Test.Ligo.BaseDAO.Management
 
 import Universum
 
-import Named (defaults, (!))
+import Named (defaults)
 import Test.Tasty (TestTree, testGroup)
 
 import Lorentz as L hiding (now, (>>))
 import Morley.Michelson.Runtime.GState (genesisAddress)
-import Morley.Michelson.Typed (convertContract)
-import Morley.Michelson.Typed.Convert (untypeValue)
 import Test.Cleveland
+import Morley.Util.Peano
+import Morley.Util.SizedList (SizedList)
 
 import Ligo.BaseDAO.Contract
 import Ligo.BaseDAO.Types
 import Test.Ligo.BaseDAO.Management.TransferOwnership
+import Test.Ligo.Common (refillables)
 
 -- | Function that originates the contract and also make a bunch of
 -- address (the `addrCount` arg determines the count) for use within
 -- the tests. It is not pretty, but IMO it makes the test a bit less
 -- verbose.
 withOriginated
-  :: MonadCleveland caps base m
-  => Integer
-  -> ([Address] -> FullStorage)
-  -> ([Address] -> TAddress Parameter -> m a)
+  :: (MonadCleveland caps m, IsoNatPeano num num', SingIPeano num)
+  => (SizedList num ImplicitAddress -> Storage)
+  -> (SizedList num ImplicitAddress -> ContractHandle Parameter Storage () -> m a)
   -> m a
-withOriginated addrCount storageFn tests = do
-  addresses <- mapM (\x -> newAddress $ fromString ("address" <> (show x))) [1 ..addrCount]
-  baseDao <- originateUntyped $ UntypedOriginateData
-    { uodName = "BaseDAO Test Contract"
-    , uodBalance = zeroMutez
-    , uodStorage = untypeValue $ toVal $ storageFn addresses
-    , uodContract = convertContract baseDAOContractLigo
-    }
-
-  tests addresses (TAddress baseDao)
+withOriginated storageFn tests = do
+  addresses <- refillables $ newAddresses (enumAliases "address")
+  baseDao <- originate "BaseDAO Test Contract" (storageFn addresses) baseDAOContractLigo
+  tests addresses baseDao
 
 -- | We test non-token entrypoints of the BaseDAO contract here
 test_BaseDAO_Management :: [TestTree]
@@ -93,23 +83,11 @@ test_BaseDAO_Management =
   ]
 
   where
-    testCustomEntrypoint :: ('[(ByteString, FullStorage)] :-> '[([Operation], Storage)])
-    testCustomEntrypoint =
-      -- Unpack an address from packed bytes and set it as admin
-      L.unpair #
-      L.unpackRaw @Address #
-      L.ifNone
-        (L.unit # L.failWith)
-        (L.dip (L.toField #fsStorage) # setField #sAdmin) #
-      L.nil # pair
 
-    initialStorage currentLevel admin = mkFullStorage
+    initialStorage currentLevel admin = mkStorage' @'Base
       ! #admin admin
-      ! #extra dynRecUnsafe
+      ! #extra ()
       ! #metadata mempty
       ! #level currentLevel
-      ! #tokenAddress genesisAddress
-      ! #customEps
-          [ ([mt|testCustomEp|], lPackValueRaw testCustomEntrypoint)
-          ]
+      ! #tokenAddress (toAddress genesisAddress)
       ! defaults

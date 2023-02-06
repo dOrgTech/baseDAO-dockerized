@@ -1,8 +1,9 @@
-// SPDX-FileCopyrightText: 2021 TQ Tezos
-// SPDX-License-Identifier: LicenseRef-MIT-TQ
+// SPDX-FileCopyrightText: 2021 Tezos Commons
+// SPDX-License-Identifier: LicenseRef-MIT-TC
 
 #if !TYPES_H
 #define TYPES_H
+# include "implementation_storage.mligo"
 
 // ID of an FA2 token
 type token_id = nat
@@ -35,14 +36,6 @@ type transfer_item =
   ; txs : transfer_destination list
   }
 type transfer_params = transfer_item list
-
-// -- Helpers -- //
-
-// Internal helper to fold up to a number
-type counter =
-  { current : nat
-  ; total : nat
-  }
 
 // -- DAO base types -- //
 
@@ -106,9 +99,6 @@ type permit =
 // TZIP-16 metadata map
 type metadata_map = (string, bytes) big_map
 
-// Instantiation-specific stored data
-type contract_extra = (string, bytes) big_map
-
 // -- Storage -- //
 
 // External FA2 token used for governance
@@ -137,7 +127,60 @@ type delegate =
   { owner : address
   ; delegate : address
   }
+
 type delegates = (delegate, unit) big_map
+
+
+// Use to query the previous and next of a proposal.
+type plist_direction = bool
+
+// Value of `plist_direction`.
+let prev = false
+let next = true
+
+(*
+ * Proposal Doubly Linked List
+ *
+ * Behave like `OrderedSet`.
+ * When inserting a new key, it should be ensured that the key does not exist in the list or else
+ * it will corrupt the data structure.
+ *)
+type proposal_doubly_linked_list =
+  [@layout:comb]
+  { first: proposal_key // First proposal_key in the list
+  ; last: proposal_key // Last proposal_key in the list. If only 1 key exist, last = first.
+  ; map: ((proposal_key * plist_direction), proposal_key) big_map
+  }
+
+type config =
+  { max_quorum_threshold : quorum_fraction
+  // ^ Determine the maximum value of quorum threshold that is allowed.
+  ; min_quorum_threshold : quorum_fraction
+  // ^ Determine the minimum value of quorum threshold that is allowed.
+
+  ; period : period
+  // ^ Determines the stages length.
+
+  ; fixed_proposal_fee_in_token : nat
+  // ^ A base fee paid for submitting a new proposal.
+
+  ; max_quorum_change : quorum_fraction
+  // ^ A percentage value that limits the quorum_threshold change during
+  // every update of the same.
+  ; quorum_change : quorum_fraction
+  // ^ A percentage value that is used in the computation of new quorum
+  // threshold value.
+  ; governance_total_supply : nat
+  // ^ The total supply of governance tokens used in the computation of
+  // of new quorum threshold value at each stage.
+
+  ; proposal_flush_level : blocks
+  // ^ The proposal age at (and above) which the proposal is considered flushable.
+  // Has to be bigger than `period * 2`
+  ; proposal_expired_level : blocks
+  // ^ The proposal age at (and above) which the proposal is considered expired.
+  // Has to be bigger than `proposal_flush_time`
+  }
 
 type storage =
   { governance_token : governance_token
@@ -147,7 +190,7 @@ type storage =
   ; metadata : metadata_map
   ; extra : contract_extra
   ; proposals : (proposal_key, proposal) big_map
-  ; proposal_key_list_sort_by_level : (blocks * proposal_key) set
+  ; ongoing_proposals_dlist: proposal_doubly_linked_list option
   ; staked_votes : (address * proposal_key, staked_vote) big_map
   ; permits_counter : nonce
   ; freeze_history : freeze_history
@@ -156,6 +199,7 @@ type storage =
   ; quorum_threshold_at_cycle : quorum_threshold_at_cycle
   ; frozen_total_supply : nat
   ; delegates : delegates
+  ; config : config
   }
 
 // -- Parameter -- //
@@ -165,8 +209,6 @@ type unfreeze_param = nat
 type unstake_vote_param = proposal_key list
 
 type transfer_ownership_param = address
-
-type custom_ep_param = (string * bytes)
 
 type propose_params =
   [@layout:comb]
@@ -227,30 +269,19 @@ type forbid_xtz_params =
 (*
  * Entrypoints that allow Tz transfers
  *)
-type allow_xtz_params =
-  | CallCustom of custom_ep_param
+type allow_xtz_params_contract =
   | Propose of propose_params
   | Transfer_contract_tokens of transfer_contract_tokens_param
   | Transfer_ownership of transfer_ownership_param
   | Accept_ownership of unit
   | Default of unit
 
-(*
- * Full parameter of the contract.
- * Separated into entrypoints that forbid Tz transfers,
- * and those that allow Tz transfers
- *)
-type parameter =
-  (allow_xtz_params, "", forbid_xtz_params, "") michelson_or
-
-type custom_entrypoints = (string, bytes) big_map
-
-type decision_lambda_input =
+type decision_callback_input =
   { proposal : proposal
   ; extras : contract_extra
   }
 
-type decision_lambda_output =
+type decision_callback_output =
   { operations : operation list
   ; extras : contract_extra
   ; guardian : address option
@@ -273,76 +304,21 @@ type initial_config_data =
   ; governance_total_supply : nat
   }
 
-type initial_storage_data =
+type initial_data =
   { admin : address
   ; guardian : address
   ; governance_token : governance_token
   ; start_level : blocks
   ; metadata_map : metadata_map
   ; freeze_history : freeze_history_list
-  }
-
-type initial_data =
-  { storage_data : initial_storage_data
   ; config_data : initial_config_data
   }
 
-type decision_lambda = decision_lambda_input -> decision_lambda_output
-
-type config =
-  { proposal_check : propose_params * contract_extra -> unit
-  // ^ A lambda used to verify whether a proposal can be submitted.
-  // It checks 2 things: the proposal itself and the amount of tokens frozen upon submission.
-  // It allows the DAO to reject a proposal by arbitrary logic and captures bond requirements
-  ; rejected_proposal_slash_value : proposal * contract_extra -> nat
-  // ^ When a proposal is rejected, the value that the proposer gets back can be slashed.
-  // This lambda returns the amount to be slashed.
-  ; decision_lambda : decision_lambda
-  // ^ The decision lambda is executed based on a successful proposal.
-  // It has access to the proposal, can modify `contractExtra` and perform arbitrary
-  // operations.
-
-  ; max_proposals : nat
-  // ^ Determine the maximum number of ongoing proposals that are allowed in the contract.
-  ; max_quorum_threshold : quorum_fraction
-  // ^ Determine the maximum value of quorum threshold that is allowed.
-  ; min_quorum_threshold : quorum_fraction
-  // ^ Determine the minimum value of quorum threshold that is allowed.
-
-  ; period : period
-  // ^ Determines the stages length.
-
-  ; fixed_proposal_fee_in_token : nat
-  // ^ A base fee paid for submitting a new proposal.
-
-  ; max_quorum_change : quorum_fraction
-  // ^ A percentage value that limits the quorum_threshold change during
-  // every update of the same.
-  ; quorum_change : quorum_fraction
-  // ^ A percentage value that is used in the computation of new quorum
-  // threshold value.
-  ; governance_total_supply : nat
-  // ^ The total supply of governance tokens used in the computation of
-  // of new quorum threshold value at each stage.
-
-  ; proposal_flush_level : blocks
-  // ^ The proposal age at (and above) which the proposal is considered flushable.
-  // Has to be bigger than `period * 2`
-  ; proposal_expired_level : blocks
-  // ^ The proposal age at (and above) which the proposal is considered expired.
-  // Has to be bigger than `proposal_flush_time`
-
-  ; custom_entrypoints : custom_entrypoints
-  // ^ Packed arbitrary lambdas associated to a name for custom execution.
-  }
-
-type full_storage = storage * config
+type decision_callback = decision_callback_input -> decision_callback_output
 
 // -- Misc -- //
 
 type return = operation list * storage
-
-type return_with_full_storage = operation list * full_storage
 
 let nil_op = ([] : operation list)
 

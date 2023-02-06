@@ -1,5 +1,5 @@
--- SPDX-FileCopyrightText: 2021 TQ Tezos
--- SPDX-License-Identifier: LicenseRef-MIT-TQ
+-- SPDX-FileCopyrightText: 2021 Tezos Commons
+-- SPDX-License-Identifier: LicenseRef-MIT-TC
 
 -- | TZIP-16 metadata.
 module Ligo.BaseDAO.TZIP16Metadata
@@ -14,19 +14,19 @@ module Ligo.BaseDAO.TZIP16Metadata
   , governanceTokenView
   ) where
 
-import qualified Universum as U
+import Universum qualified as U
 
 import Data.Aeson.TH (deriveJSON)
 import Data.Version (showVersion)
 
-import Lorentz hiding (View)
+import Lorentz hiding (View_)
 import Lorentz.Contracts.Spec.TZIP16Interface
 import Morley.Metadata
 import Morley.Metadata.Util.Aeson (aesonOptions)
 
 import Ligo.BaseDAO.ErrorCodes
 import Ligo.BaseDAO.Types
-import qualified Paths_baseDAO_ligo_meta as Paths
+import Paths_baseDAO_ligo_meta qualified as Paths
 
 -- | Piece of metadata defined by user.
 data MetadataConfig = MetadataConfig
@@ -35,6 +35,12 @@ data MetadataConfig = MetadataConfig
   , mcDecimals :: Integer
   , mcThumbnailUri :: Maybe Text
   } deriving stock (Eq, Show)
+
+----------------------------------------------------------------------------
+-- JSON serializers/deserializers
+----------------------------------------------------------------------------
+
+deriveJSON aesonOptions ''MetadataConfig
 
 -- | All the information for instantiating metadata.
 --
@@ -106,8 +112,7 @@ governanceTokenView MetadataSettings{} = View
   , vImplementations =
       [ VIMichelsonStorageView $
           mkMichelsonStorageView @Storage Nothing [] $
-            unsafeCompileViewCode $ WithoutParam $ do
-              stToField #sGovernanceToken
+            unsafeCompileViewCode $ WithoutParam $ stToField #sGovernanceToken
       ]
   }
 
@@ -120,13 +125,6 @@ permitsCounterView MetadataSettings{} = View
   , vImplementations =
       [ VIMichelsonStorageView $
           mkSimpleMichelsonStorageView @Storage $
-            unsafeCompileViewCode $ WithoutParam $
-              stToField #sPermitsCounter
+            unsafeCompileViewCode $ WithoutParam $ stToField #sPermitsCounter
       ]
   }
-
-----------------------------------------------------------------------------
--- JSON serializers/deserializers
-----------------------------------------------------------------------------
-
-deriveJSON aesonOptions ''MetadataConfig

@@ -1,5 +1,5 @@
--- SPDX-FileCopyrightText: 2021 TQ Tezos
--- SPDX-License-Identifier: LicenseRef-MIT-TQ
+-- SPDX-FileCopyrightText: 2021 Tezos Commons
+-- SPDX-License-Identifier: LicenseRef-MIT-TC
 
 {-# LANGUAGE RebindableSyntax #-}
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
@@ -11,24 +11,20 @@ module Test.Ligo.BaseDAO.Proposal.Config
 
   , ConfigConstants (..)
   , configConsts
-  , ProposalFrozenTokensCheck (..)
-  , RejectedProposalSlashValue (..)
-  , DecisionLambdaAction (..)
 
   , testConfig
-  , badRejectedValueConfig
-  , decisionLambdaConfig
   , voteConfig
   ) where
+
+import Data.Map qualified as Map
 
 import Lorentz
 import Universum (Constraint, fromIntegral, (?:))
 
+import Morley.Michelson.Typed.Haskell.Value (BigMap(..))
 import Morley.Util.Named
 
-import qualified Ligo.BaseDAO.ErrorCodes as DAO
-import qualified Ligo.BaseDAO.Types as DAO
-import Test.Ligo.BaseDAO.Common.Errors (tooSmallXtzErrMsg)
+import Ligo.BaseDAO.Types qualified as DAO
 
 -- | Configuration descriptor.
 --
@@ -83,8 +79,7 @@ ConfigDesc a >>- ConfigDesc b = ConfigDesc (ConfigDescChain a b)
 ------------------------------------------------------------------------
 
 data ConfigConstants = ConfigConstants
-  { cmMaxProposals :: Maybe Natural
-  , cmMaxVoters :: Maybe Natural
+  { cmMaxVoters :: Maybe Natural
   , cmQuorumThreshold :: Maybe DAO.QuorumThreshold
   , cmPeriod :: Maybe DAO.Period
   , cmProposalFlushTime :: Maybe Natural
@@ -95,96 +90,47 @@ data ConfigConstants = ConfigConstants
 --
 -- Example: @configConsts{ cmMaxVotes = 10 }@
 configConsts :: ConfigConstants
-configConsts = ConfigConstants Nothing Nothing Nothing Nothing Nothing Nothing
+configConsts = ConfigConstants Nothing Nothing Nothing Nothing Nothing
 
 data ProposalFrozenTokensCheck =
-  ProposalFrozenTokensCheck (Lambda ("ppFrozenToken" :! Natural) ())
+  ProposalFrozenTokensCheck (Lambda (DAO.ProposeParams, DAO.ContractExtra) ())
 
 data RejectedProposalSlashValue =
-  RejectedProposalSlashValue (Lambda ("proposerFrozenToken" :! Natural) ("slash_amount" :! Natural))
+  RejectedProposalSlashValue (Lambda (DAO.Proposal, DAO.ContractExtra) Natural)
 
-proposalFrozenTokensMinBound :: Natural -> ProposalFrozenTokensCheck
-proposalFrozenTokensMinBound minTokens = ProposalFrozenTokensCheck $ do
-  push minTokens
-  toNamed #requireValue
-  if #requireValue <=. #ppFrozenToken then
-    push ()
-  else do
-    push tooSmallXtzErrMsg
-    push DAO.failProposalCheck
-    pair
-    failWith
-
-divideOnRejectionBy :: Natural -> RejectedProposalSlashValue
-divideOnRejectionBy divisor = RejectedProposalSlashValue $ do
-  fromNamed #proposerFrozenToken
-  push divisor
-  swap
-  ediv
-  ifSome car $
-    push (0 :: Natural)
-  toNamed #slash_amount
-
-doNonsenseOnRejection :: RejectedProposalSlashValue
-doNonsenseOnRejection = RejectedProposalSlashValue $ do
-  drop; push (10 :: Natural)
-  toNamed #slash_amount
-
-data DecisionLambdaAction =
-  DecisionLambdaAction
-  (["frozen_tokens" :! Natural, "proposer" :! Address] :-> '[[Operation]])
-
--- | Pass frozen tokens amount as argument to the given contract.
-passProposerOnDecision
-  :: TAddress ("proposer" :! Address) -> DecisionLambdaAction
-passProposerOnDecision target = DecisionLambdaAction $ do
-  drop @("frozen_tokens" :! _)
-  dip @("proposer" :! _) $ do
-    push target
-    contract; assertSome [mt|Cannot find contract for decision lambda|]
-    push zeroMutez
-  transferTokens
-  dip nil; cons
+data DecisionCallbackAction =
+  DecisionCallbackAction
+  ('[DAO.DecisionCallbackInput] :-> '[DAO.DecisionCallbackOutput])
 
 -- Config samples
 ------------------------------------------------------------------------
 
 testConfig
-  :: AreConfigDescsExt config [ConfigConstants, ProposalFrozenTokensCheck, RejectedProposalSlashValue]
+  :: AreConfigDescsExt config '[ConfigConstants]
   => ConfigDesc config
 testConfig =
-  ConfigDesc (divideOnRejectionBy 2) >>-
-  ConfigDesc (proposalFrozenTokensMinBound 10) >>-
   ConfigDesc configConsts
-    { cmQuorumThreshold = Just (DAO.mkQuorumThreshold 1 100) }
+    { cmQuorumThreshold = Just (DAO.mkQuorumThreshold 1 100)
+    }
 
 -- | Config with longer voting period and bigger quorum threshold
 -- Needed for vote related tests that do not call `flush`
 voteConfig
-  :: AreConfigDescsExt config [ConfigConstants, ProposalFrozenTokensCheck]
+  :: AreConfigDescsExt config '[ConfigConstants]
   => ConfigDesc config
 voteConfig = ConfigDesc $
-  ConfigDesc (proposalFrozenTokensMinBound 10) >>-
   ConfigDesc configConsts
-    { cmQuorumThreshold = Just (DAO.mkQuorumThreshold 4 100) }
-
-badRejectedValueConfig
-  :: AreConfigDescsExt config '[RejectedProposalSlashValue]
-  => ConfigDesc config
-badRejectedValueConfig = ConfigDesc doNonsenseOnRejection
-
-decisionLambdaConfig
-  :: AreConfigDescsExt config '[DecisionLambdaAction]
-  => TAddress ("proposer" :! Address) -> ConfigDesc config
-decisionLambdaConfig target = ConfigDesc $ passProposerOnDecision target
+    { cmQuorumThreshold = Just (DAO.mkQuorumThreshold 4 100)
+    , cmPeriod = Just $ DAO.Period 60
+    }
 
 --------------------------------------------------------------------------------
 --
 instance IsConfigDescExt DAO.Config ConfigConstants where
   fillConfig ConfigConstants{..} DAO.Config{..} = DAO.Config
-    { cMaxProposals = cmMaxProposals ?: cMaxProposals
-    , cProposalFlushLevel = cmProposalFlushTime ?: cProposalFlushLevel
+    { cProposalFlushLevel = cmProposalFlushTime ?: cProposalFlushLevel
     , cProposalExpiredLevel = cmProposalExpiredTime ?: cProposalExpiredLevel
+    , cPeriod = cmPeriod ?: cPeriod
     , ..
     }
 
@@ -200,57 +146,34 @@ instance IsConfigDescExt DAO.Config DAO.FixedFee where
     , ..
     }
 
-instance IsConfigDescExt DAO.Config ProposalFrozenTokensCheck where
-  fillConfig (ProposalFrozenTokensCheck check) DAO.Config{..} = DAO.Config
-    { cProposalCheck = do
-        dip drop
-        toFieldNamed #ppFrozenToken
-        framed check
-    , ..
-    }
+instance IsConfigDescExt DAO.ContractExtra ProposalFrozenTokensCheck where
+  fillConfig (ProposalFrozenTokensCheck check) c = DAO.DynamicRec' $
+    mkBigMap $ Map.insert [mt|proposal_check|] (lPackValueRaw check) $ bmMap $ DAO.unDynamic c
 
-instance IsConfigDescExt DAO.Config RejectedProposalSlashValue where
-  fillConfig (RejectedProposalSlashValue toSlashValue) DAO.Config{..} =
-    DAO.Config
-    { cRejectedProposalSlashValue = do
-        dip drop
-        toField #plProposerFrozenToken; toNamed #proposerFrozenToken
-        framed toSlashValue
-    , ..
-    }
+instance IsConfigDescExt DAO.ContractExtra RejectedProposalSlashValue where
+  fillConfig (RejectedProposalSlashValue toSlashValue) c = DAO.DynamicRec' $
+    BigMap Nothing $ Map.insert [mt|rejected_proposal_slash_value|] (lPackValueRaw toSlashValue) $ bmMap $ DAO.unDynamic c
 
-instance IsConfigDescExt DAO.Config DecisionLambdaAction where
-  fillConfig (DecisionLambdaAction lam) DAO.Config{..} =
-    DAO.Config
-    { cDecisionLambda = do
-        getField #diProposal
-        getField #plProposerFrozenToken; toNamed #frozen_tokens
-        dip $ do toField #plProposer; toNamed #proposer;
-        dip (dip $ do toField #diExtra)
-        framed lam
-        swap
-        dip (push Nothing)
-        constructStack @DAO.DecisionLambdaOutput
-
-    , ..
-    }
+instance IsConfigDescExt DAO.ContractExtra DecisionCallbackAction where
+  fillConfig (DecisionCallbackAction lam) c = DAO.DynamicRec' $
+    BigMap Nothing $ Map.insert [mt|decision_callback|] (lPackValueRaw $ mkLambda lam) $ bmMap $ DAO.unDynamic c
 
 instance IsConfigDescExt DAO.Config ("changePercent" :! Natural) where
-  fillConfig (N cp) DAO.Config{..} =
+  fillConfig (arg #changePercent -> cp) DAO.Config{..} =
     DAO.Config
     { cQuorumChange = DAO.QuorumFraction $ fromIntegral $ DAO.percentageToFractionNumerator cp
     , ..
     }
 
 instance IsConfigDescExt DAO.Config ("maxChangePercent" :! Natural) where
-  fillConfig (N cp) DAO.Config{..} =
+  fillConfig (arg #maxChangePercent -> cp) DAO.Config{..} =
     DAO.Config
     { cMaxQuorumChange = DAO.QuorumFraction $ fromIntegral $ DAO.percentageToFractionNumerator cp
     , ..
     }
 
 instance IsConfigDescExt DAO.Config ("governanceTotalSupply" :! Natural) where
-  fillConfig (N ts) DAO.Config{..} =
+  fillConfig (arg #governanceTotalSupply -> ts) DAO.Config{..} =
     DAO.Config
     { cGovernanceTotalSupply = DAO.GovernanceTotalSupply ts
     , ..

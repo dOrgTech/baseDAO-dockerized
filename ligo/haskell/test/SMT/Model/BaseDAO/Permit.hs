@@ -1,5 +1,5 @@
--- SPDX-FileCopyrightText: 2021 TQ Tezos
--- SPDX-License-Identifier: LicenseRef-MIT-TQ
+-- SPDX-FileCopyrightText: 2021 Tezos Commons
+-- SPDX-License-Identifier: LicenseRef-MIT-TC
 
 module SMT.Model.BaseDAO.Permit
  ( verifyPermitProtectedVote
@@ -8,14 +8,14 @@ module SMT.Model.BaseDAO.Permit
 import Universum
 
 import Control.Monad.Except (throwError)
-import Lorentz hiding (not, cast, checkSignature, get)
-import Morley.Tezos.Address (mkKeyAddress)
+import Lorentz hiding (cast, checkSignature, get, not)
+import Morley.Tezos.Address (ImplicitAddress, mkKeyAddress)
 import Morley.Tezos.Crypto (checkSignature)
 
 import Ligo.BaseDAO.Types
 import SMT.Model.BaseDAO.Types
 
-verifyPermitProtectedVote :: ModelSource -> PermitProtected VoteParam -> ModelT (VoteParam, Address)
+verifyPermitProtectedVote :: ModelSource -> PermitProtected VoteParam -> ModelT cep (VoteParam, ImplicitAddress)
 verifyPermitProtectedVote mso permited = do
   let voteParam = permited & ppArgument
   case (permited & ppPermit) of

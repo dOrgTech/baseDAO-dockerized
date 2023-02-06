@@ -1,5 +1,5 @@
--- SPDX-FileCopyrightText: 2021 TQ Tezos
--- SPDX-License-Identifier: LicenseRef-MIT-TQ
+-- SPDX-FileCopyrightText: 2021 Tezos Commons
+-- SPDX-License-Identifier: LicenseRef-MIT-TC
 
 module SMT.Model.BaseDAO.Management
   ( applyAcceptOwnership
@@ -10,21 +10,21 @@ module SMT.Model.BaseDAO.Management
 import Universum
 
 import Control.Monad.Except (throwError)
-import qualified Data.Map as Map
 
+import Lorentz.Address
 import Morley.Util.Named
 
 import Ligo.BaseDAO.Types
 import SMT.Model.BaseDAO.Types
 
-applyTransferOwnership :: ModelSource -> TransferOwnershipParam -> ModelT ()
-applyTransferOwnership mso (N param) = do
+applyTransferOwnership :: ModelSource -> TransferOwnershipParam -> ModelT cep ()
+applyTransferOwnership mso (arg #newOwner -> param) = do
   selfAddr <- get <&> msSelfAddress
 
   modifyStore $ \s -> do
     let newOwner = param
 
-    unless (msoSender mso == sAdmin s) $
+    unless (toAddress (msoSender mso) == sAdmin s) $
       throwError NOT_ADMIN
 
     if selfAddr == newOwner then
@@ -32,17 +32,13 @@ applyTransferOwnership mso (N param) = do
     else
       pure $ s { sPendingOwner = newOwner}
 
-applyAcceptOwnership :: ModelSource -> ModelT ()
+applyAcceptOwnership :: ModelSource -> ModelT cep ()
 applyAcceptOwnership mso = modifyStore $ \s ->
-  if (s & sPendingOwner) == (mso & msoSender) then
-    pure $ s { sAdmin = (mso & msoSender)}
+  if (s & sPendingOwner) == toAddress (mso & msoSender) then
+    pure $ s { sAdmin = toAddress (mso & msoSender)}
   else throwError NOT_PENDING_ADMIN
 
-applyCallCustom :: ModelSource -> CallCustomParam -> ModelT ()
-applyCallCustom _ (epName, packedParam) = do
+applyCallCustom :: ModelSource -> (VariantToParam var) -> ModelT var ()
+applyCallCustom _ cep = do
   customEps <- get <&> msCustomEps
-  case Map.lookup epName customEps of
-    Just f ->
-      f packedParam
-    Nothing ->
-      throwError ENTRYPOINT_NOT_FOUND
+  customEps cep

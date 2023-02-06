@@ -1,5 +1,5 @@
--- SPDX-FileCopyrightText: 2021 TQ Tezos
--- SPDX-License-Identifier: LicenseRef-MIT-TQ
+-- SPDX-FileCopyrightText: 2021 Tezos Commons
+-- SPDX-License-Identifier: LicenseRef-MIT-TC
 
 module Test.Ligo.BaseDAO.Types
   ( unit_TypesMatch
@@ -9,9 +9,9 @@ import Universum
 
 import Test.HUnit (Assertion)
 
-import Morley.Michelson.Typed (Contract)
+import Lorentz
 
 import Ligo.BaseDAO.Contract
 
 unit_TypesMatch :: Assertion
-unit_TypesMatch = evaluateNF_ @(Contract _ _) baseDAOContractLigo
+unit_TypesMatch = evaluateNF_ @(Contract _ _ _) baseDAOContractLigo

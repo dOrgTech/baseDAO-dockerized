@@ -15,15 +15,16 @@ export interface Storage {
   max_xtz_amount: string;
 }
 
-export type Template = "registry" | "treasury"
+export type Template = "registry" | "treasury" | "lambda"
 
 export const generateSteps = async (template: Template, storage: Storage, originatorAddress: string) => {
   const ligoDirPath = join(process.cwd(), "ligo")
-  const storagePathArgument = join("out", `${template}DAO_storage.tz`)
+  const storagePathArgument = join("out", `${template === "lambda" ? "lambdaregistry": template}DAO_storage.tz`)
   const storagePath = join(ligoDirPath, storagePathArgument)
   // const stepsPathArgument = join("out", "steps")
   // const stepsPath = join(ligoDirPath, stepsPathArgument)
   // const steps: Record<string, string> = {};
+  console.log("storagepath", storagePath)
 
   try {
     rimraf.sync(storagePath)

@@ -1,0 +1,141 @@
+(Pair (Pair (Pair (Pair (Pair "tz1QozfhaUW4wLnohDo6yiBUmh7cPCSXE9Af"
+                              (Pair (Pair (Pair 0 1000) 190000 990000) (Pair 10000 15840) 47520 36000)
+                              50000)
+                        {}
+                        {}
+                        { Elt "transfer_proposal"
+                              (Pair (Pair { DUP ;
+                                            CAR ;
+                                            CDR ;
+                                            UNPACK
+                                              (pair (nat %agora_post_id)
+                                                    (list %transfers
+                                                       (or (pair %xtz_transfer_type (mutez %amount) (address %recipient))
+                                                           (pair %token_transfer_type
+                                                              (address %contract_address)
+                                                              (list %transfer_list
+                                                                 (pair (address %from_) (list %txs (pair (address %to_) (nat %token_id) (nat %amount))))))))) ;
+                                            IF_NONE
+                                              { DROP ; PUSH string "" ; FAILWITH }
+                                              { NIL operation ;
+                                                SWAP ;
+                                                CDR ;
+                                                ITER { IF_LEFT
+                                                         { DUP ;
+                                                           CDR ;
+                                                           CONTRACT unit ;
+                                                           IF_NONE
+                                                             { DROP 2 ; PUSH nat 121 ; FAILWITH }
+                                                             { DIG 2 ; SWAP ; DIG 2 ; CAR ; UNIT ; TRANSFER_TOKENS ; CONS } }
+                                                         { DUP ;
+                                                           CAR ;
+                                                           CONTRACT %transfer
+                                                             (list (pair (address %from_) (list %txs (pair (address %to_) (nat %token_id) (nat %amount))))) ;
+                                                           IF_NONE
+                                                             { DROP 2 ; PUSH nat 121 ; FAILWITH }
+                                                             { DIG 2 ; SWAP ; PUSH mutez 0 ; DIG 3 ; CDR ; TRANSFER_TOKENS ; CONS } } } ;
+                                                SWAP ;
+                                                CAR ;
+                                                CAR ;
+                                                NONE address ;
+                                                PAIR ;
+                                                PAIR } }
+                                          { PUSH (lambda (pair string (map string bytes)) mutez)
+                                                 { UNPAIR ;
+                                                   GET ;
+                                                   IF_NONE
+                                                     { PUSH string "" ; FAILWITH }
+                                                     { UNPACK mutez ; IF_NONE { PUSH string "" ; FAILWITH } {} } } ;
+                                            PAIR ;
+                                            { UNPAIR ;
+                                              SWAP ;
+                                              UNPAIR ;
+                                              UNPACK
+                                                (pair (nat %agora_post_id)
+                                                      (list %transfers
+                                                         (or (pair %xtz_transfer_type (mutez %amount) (address %recipient))
+                                                             (pair %token_transfer_type
+                                                                (address %contract_address)
+                                                                (list %transfer_list
+                                                                   (pair (address %from_) (list %txs (pair (address %to_) (nat %token_id) (nat %amount))))))))) ;
+                                              IF_NONE
+                                                { DROP 2 ; PUSH string "" ; FAILWITH }
+                                                { DUP 2 ;
+                                                  PUSH string "min_xtz_amount" ;
+                                                  PAIR ;
+                                                  DUP 4 ;
+                                                  SWAP ;
+                                                  EXEC ;
+                                                  DIG 2 ;
+                                                  PUSH string "max_xtz_amount" ;
+                                                  PAIR ;
+                                                  DIG 3 ;
+                                                  SWAP ;
+                                                  EXEC ;
+                                                  DIG 2 ;
+                                                  CDR ;
+                                                  ITER { IF_LEFT
+                                                           { PUSH mutez 0 ;
+                                                             DUP 2 ;
+                                                             CAR ;
+                                                             COMPARE ;
+                                                             EQ ;
+                                                             IF { DROP ; PUSH string "ZERO_MUTEZ" ; SOME }
+                                                                { DUP 3 ;
+                                                                  DUP 2 ;
+                                                                  CAR ;
+                                                                  COMPARE ;
+                                                                  LT ;
+                                                                  IF { DROP ; PUSH string "LOW_XTZ" ; SOME }
+                                                                     { DUP 2 ;
+                                                                       SWAP ;
+                                                                       CAR ;
+                                                                       COMPARE ;
+                                                                       GT ;
+                                                                       IF { PUSH string "HIGH_XTZ" ; SOME } { NONE string } } } ;
+                                                             IF_NONE {} { PUSH nat 102 ; PAIR ; FAILWITH } }
+                                                           { DROP } } ;
+                                                  DROP 2 ;
+                                                  UNIT } } })
+                                    True) ;
+                          Elt "update_contract_delegate_proposal"
+                              (Pair (Pair { DUP ;
+                                            CAR ;
+                                            CDR ;
+                                            UNPACK (option key_hash) ;
+                                            IF_NONE
+                                              { DROP ; PUSH string "" ; FAILWITH }
+                                              { NIL operation ;
+                                                SWAP ;
+                                                SET_DELEGATE ;
+                                                CONS ;
+                                                SWAP ;
+                                                CAR ;
+                                                CAR ;
+                                                NONE address ;
+                                                PAIR ;
+                                                PAIR } }
+                                          { DROP ; UNIT })
+                                    True) ;
+                          Elt "update_guardian_proposal"
+                              (Pair (Pair { DUP ;
+                                            CAR ;
+                                            CDR ;
+                                            UNPACK address ;
+                                            IF_NONE
+                                              { DROP ; PUSH string "" ; FAILWITH }
+                                              { NIL operation ; DIG 2 ; CAR ; CAR ; DIG 2 ; SOME ; PAIR ; PAIR } }
+                                          { DROP ; UNIT })
+                                    True) })
+                  (Pair {} 0)
+                  0
+                  "KT1RdwP8XJPjFyGoUsXFQnQo1yNm6gUqVdp5"
+                  0)
+            (Pair (Pair "KT1QbdJ7M7uAQZwLpvzerUyk7LYkJWDL7eDh" {})
+                  None
+                  "tz1QozfhaUW4wLnohDo6yiBUmh7cPCSXE9Af")
+            (Pair 0 {})
+            (Pair (Pair 1 100000) 0)
+            {})
+      100)
+

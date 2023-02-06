@@ -1,5 +1,5 @@
--- SPDX-FileCopyrightText: 2021 TQ Tezos
--- SPDX-License-Identifier: LicenseRef-MIT-TQ
+-- SPDX-FileCopyrightText: 2021 Tezos Commons
+-- SPDX-License-Identifier: LicenseRef-MIT-TC
 
 -- NOTE: This file should not be modified directly.
 -- Use @stack scripts/generate_error_code.hs@ instead.
@@ -38,10 +38,6 @@ proposalNotExist = 103
 -- | The proposal voting stage has already ended.
 votingStageOver :: Natural
 votingStageOver = 104
-
--- | The maximum amount of ongoing proposals has been reached.
-maxProposalsReached :: Natural
-maxProposalsReached = 105
 
 -- | Transfer of XTZ is forbidden on this entrypoint.
 forbiddenXtz :: Natural
@@ -99,13 +95,9 @@ emptyFlush = 119
 notDelegate :: Natural
 notDelegate = 120
 
--- | Executing the proposal's decision lambda results in failure.
-failDecisionLambda :: Natural
-failDecisionLambda = 121
-
--- | The chosen custom entrypoint does not exist.
-entrypointNotFound :: Natural
-entrypointNotFound = 122
+-- | Executing the proposal's decision callback results in failure.
+failDecisionCallback :: Natural
+failDecisionCallback = 121
 
 -- | Cannot call `unstake_vote` on the proposal that is not flushed or dropped.
 unstakeInvalidProposal :: Natural
@@ -163,12 +155,6 @@ tzipErrorList = [
   EStatic $ StaticError
     { seError = toExpression $ toVal @Integer $ toInteger votingStageOver
     , seExpansion = toExpression $ toVal @MText [mt|The proposal voting stage has already ended.|]
-    , seLanguages = ["en"]
-    }
-  ,
-  EStatic $ StaticError
-    { seError = toExpression $ toVal @Integer $ toInteger maxProposalsReached
-    , seExpansion = toExpression $ toVal @MText [mt|The maximum amount of ongoing proposals has been reached.|]
     , seLanguages = ["en"]
     }
   ,
@@ -257,14 +243,8 @@ tzipErrorList = [
     }
   ,
   EStatic $ StaticError
-    { seError = toExpression $ toVal @Integer $ toInteger failDecisionLambda
-    , seExpansion = toExpression $ toVal @MText [mt|Executing the proposal's decision lambda results in failure.|]
-    , seLanguages = ["en"]
-    }
-  ,
-  EStatic $ StaticError
-    { seError = toExpression $ toVal @Integer $ toInteger entrypointNotFound
-    , seExpansion = toExpression $ toVal @MText [mt|The chosen custom entrypoint does not exist.|]
+    { seError = toExpression $ toVal @Integer $ toInteger failDecisionCallback
+    , seExpansion = toExpression $ toVal @MText [mt|Executing the proposal's decision callback results in failure.|]
     , seLanguages = ["en"]
     }
   ,

@@ -1,13 +1,16 @@
--- SPDX-FileCopyrightText: 2021 TQ Tezos
--- SPDX-License-Identifier: LicenseRef-MIT-TQ
+-- SPDX-FileCopyrightText: 2021 Tezos Commons
+-- SPDX-License-Identifier: LicenseRef-MIT-TC
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Test.Ligo.BaseDAO.Common
-  ( DaoOriginateData(..)
+  ( ContractType(..)
+  , DaoOriginateData(..)
   , OriginateFn
 
   , dummyFA2Contract
+  , dummyFA12Contract
   , dummyGuardianContract
   , makeProposalKey
   , addDataToSign
@@ -19,12 +22,12 @@ module Test.Ligo.BaseDAO.Common
   , createSampleProposal
   , createSampleProposals
   , defaultQuorumThreshold
-  , originateLigoDaoWithConfig
   , originateLigoDaoWithConfigDesc
   , originateLigoDao
 
   -- * Helpers
   , metadataSize
+  , refillables
 
   -- * Re-export
   , module Errors
@@ -33,12 +36,15 @@ module Test.Ligo.BaseDAO.Common
 
 import Universum hiding (drop, swap)
 
-import qualified Data.ByteString as BS
+import Data.ByteString qualified as BS
 import Lorentz hiding (assert, now, (>>))
-import qualified Lorentz.Contracts.Spec.FA2Interface as FA2
-import Morley.Michelson.Typed.Convert (convertContract, untypeValue)
-import Named ((!))
+import Lorentz.Contracts.Spec.AbstractLedgerInterface qualified as FA12
+import Lorentz.Contracts.Spec.FA2Interface qualified as FA2
+import Morley.Michelson.Typed.Scope (HasNoOp)
+import Morley.Util.SizedList (SizedList'(..), pattern (::<))
 import Test.Cleveland
+import Test.Cleveland.Internal.Abstract
+import Test.Cleveland.Internal.Actions.Helpers
 
 import Ligo.BaseDAO.Contract
 import Ligo.BaseDAO.Types
@@ -46,25 +52,32 @@ import Test.Ligo.BaseDAO.Common.Errors as Errors
 import Test.Ligo.BaseDAO.Common.StorageHelper as StorageHelper
 import Test.Ligo.BaseDAO.Proposal.Config (ConfigDesc, fillConfig)
 
-type OriginateFn m = QuorumThreshold -> m DaoOriginateData
+type OriginateFn a m = QuorumThreshold -> m (DaoOriginateData a)
 
-type instance AsRPC FA2.TransferItem = FA2.TransferItem
+instance HasRPCRepr FA2.TransferItem where
+  type AsRPC FA2.TransferItem = FA2.TransferItem
 
-data DaoOriginateData = DaoOriginateData
-  { dodOwner1 :: Address
-  , dodOperator1 :: Address
-  , dodOwner2 :: Address
-  , dodOperator2 :: Address
-  , dodDao :: TAddress Parameter
-  , dodTokenContract :: TAddress FA2.Parameter
-  , dodAdmin :: Address
-  , dodGuardian :: TAddress (Address, ProposalKey)
+data ContractType
+  = BaseDaoContract
+  | RegistryDaoContract
+  | TreasuryDaoContract
+  deriving stock Eq
+
+data DaoOriginateData a = DaoOriginateData
+  { dodOwner1 :: ImplicitAddress
+  , dodOperator1 :: ImplicitAddress
+  , dodOwner2 :: ImplicitAddress
+  , dodOperator2 :: ImplicitAddress
+  , dodDao :: ContractHandle (Parameter' (VariantToParam a)) (StorageSkeleton (VariantToExtra a)) ()
+  , dodTokenContract :: ContractHandle FA2.Parameter [FA2.TransferParams] ()
+  , dodAdmin :: ImplicitAddress
+  , dodGuardian :: ContractHandle (Address, ProposalKey) () ()
   , dodPeriod :: Natural
   }
 
 -- | A dummy contract with FA2 parameter that remembers the
 -- transfer calls.
-dummyFA2Contract :: Contract FA2.Parameter [FA2.TransferParams]
+dummyFA2Contract :: Contract FA2.Parameter [FA2.TransferParams] ()
 dummyFA2Contract = defaultContract $
   unpair #
     (entryCase @FA2.Parameter (Proxy @PlainEntrypointsKind)
@@ -73,8 +86,20 @@ dummyFA2Contract = defaultContract $
       , #cUpdate_operators /-> Lorentz.drop
       )) # nil # pair
 
+-- | A dummy contract with FA1.2 parameter that remembers the
+-- transfer calls.
+dummyFA12Contract :: Contract FA12.Parameter [FA12.TransferParams] ()
+dummyFA12Contract = defaultContract $
+  unpair #
+    (entryCase @FA12.Parameter (Proxy @PlainEntrypointsKind)
+      ( #cTransfer /-> cons
+      , #cGetTotalSupply /-> Lorentz.drop
+      , #cGetBalance /-> Lorentz.drop
+      )) # nil # pair
+
+
 -- | A dummy contract that act as guardian contract for BaseDAO
-dummyGuardianContract :: Contract (Address, ProposalKey) ()
+dummyGuardianContract :: Contract (Address, ProposalKey) () ()
 dummyGuardianContract = defaultContract $
   unpair # unpair #
   stackType @'[Address, ProposalKey, ()] #
@@ -91,8 +116,8 @@ makeProposalKey :: ProposeParams -> ProposalKey
 makeProposalKey params = toHashHs $ lPackValue params
 
 addDataToSign
-  :: (MonadCleveland caps base m)
-  => TAddress param
+  :: (MonadCleveland caps m)
+  => ContractHandle p s ()
   -> Nonce
   -> d
   -> m (DataToSign d, d)
@@ -102,8 +127,8 @@ addDataToSign (toAddress -> dsContract) dsNonce dsData = do
 
 -- | Add a permit from given user.
 permitProtect
-  :: (MonadCleveland caps base m, NicePackedValue a)
-  => Address -> (DataToSign a, a) -> m (PermitProtected a)
+  :: (MonadCleveland caps m, NicePackedValue a)
+  => ImplicitAddress -> (DataToSign a, a) -> m (PermitProtected a)
 permitProtect author (toSign, a) = do
   pKey <- getPublicKey author
   pSignature <- signBinary (lPackValue toSign) author
@@ -113,106 +138,85 @@ permitProtect author (toSign, a) = do
     }
 
 sendXtz
-  :: (MonadCleveland caps base m, HasCallStack)
-  => TAddress cp -> m ()
-sendXtz addr = withFrozenCallStack $ do
-  let transferData = TransferData
-        { tdTo = toAddress addr
-        , tdAmount = toMutez 0.5_e6 -- 0.5 xtz
-        , tdEntrypoint = DefEpName
-        , tdParameter = ()
-        }
-  transfer transferData
+  :: (MonadCleveland caps m, HasCallStack)
+  => ContractHandle cp st vd  -> m ()
+sendXtz addr = withFrozenCallStack $
+  transfer (chAddress addr) [tz|0.5|]
 
 sendXtzWithAmount
-  :: (MonadCleveland caps base m, HasCallStack)
-  => Mutez -> TAddress cp -> m ()
-sendXtzWithAmount amt addr = withFrozenCallStack $ do
-  let transferData = TransferData
-        { tdTo = toAddress addr
-        , tdAmount = amt
-        , tdEntrypoint = DefEpName
-        , tdParameter = ()
-        }
-  transfer transferData
+  :: (MonadCleveland caps m, HasCallStack)
+  => Mutez -> ContractHandle cp st vd -> m ()
+sendXtzWithAmount amt addr = withFrozenCallStack $
+  transfer (chAddress addr) amt
 
 defaultQuorumThreshold :: QuorumThreshold
 defaultQuorumThreshold = mkQuorumThreshold 1 100
 
+type OriginationCEConstraints cep =
+  ( Typeable cep
+  , Default (VariantToExtra cep)
+  , NiceStorage (StorageSkeleton (VariantToExtra cep))
+  , IsoValue (VariantToExtra cep)
+  , NiceParameterFull (VariantToParam cep)
+  , HasNoOp (ToT (VariantToExtra cep)))
+
 originateLigoDaoWithConfig
- :: MonadCleveland caps base m
- => ContractExtra
+ :: forall cep caps m. (OriginationCEConstraints cep, MonadCleveland caps m)
+ => (VariantToExtra cep)
  -> Config
- -> OriginateFn m
-originateLigoDaoWithConfig extra config qt = do
+ -> OriginateFn cep m
+originateLigoDaoWithConfig extra config qt =
+  refillables (newAddresses $ "owner1" :< "operator1" :< "owner2" :< "operator2" :< "admin" :< Nil) >>=
+    \(owner1 ::< operator1 ::< owner2 ::< operator2 ::< admin ::< Nil') -> do
+      owner1Balance <- getBalance owner1
 
-  owner1 :: Address <- newAddress "owner1"
-  operator1 :: Address <- newAddress "operator1"
-  owner2 :: Address <- newAddress "owner2"
-  operator2 :: Address <- newAddress "operator2"
+      when (owner1Balance < 2_e6) $ do
+        let fundAddress x = transfer x [tz|5|]
+        mapM_ fundAddress [owner1, operator1, owner2, operator2, admin]
 
-  admin :: Address <- newAddress "admin"
+      tokenContract <- originate "TokenContract" [] dummyFA2Contract
+      guardianContract <- originate "guardian" () dummyGuardianContract
+      currentLevel <- getLevel
 
-  owner1Balance <- getBalance owner1
+      let originationOffset = 12
+      let storage =
+                ( mkStorage
+                  ! #extra extra
+                  ! #admin admin
+                  ! #metadata mempty
+                  ! #tokenAddress (toAddress tokenContract)
+                  ! #level (currentLevel + originationOffset)
+                    -- We add some levels to offset for the delay caused by the origination function
+                    -- So the expectation is that by the time origination has finished, we will be closer
+                    -- to the actual block that includes origination so that the tests have a lesser chance
+                    -- to fail due to this difference.
+                  ! #quorumThreshold qt
+                  ! #config config
+                )
+                { sGuardian = toAddress guardianContract
+                }
 
-  when (owner1Balance < 2_e6) $ do
-    let fundAddress x = transfer $ TransferData x (toMutez 5_e6) DefEpName ()
-    mapM_ fundAddress [owner1, operator1, owner2, operator2, admin]
+      dao <- originate "BaseDAO" storage (getBaseDAOContract @cep)
+      advanceToLevel (currentLevel + originationOffset)
 
-  currentLevel <- getLevel
-  tokenContract <- chAddress <$> originateSimple "TokenContract" [] dummyFA2Contract
-  guardianContract <- chAddress <$> originateSimple "guardian" () dummyGuardianContract
-
-  let originationOffset = 12
-  let fullStorage = FullStorage
-        { fsStorage =
-            ( mkStorage
-              ! #extra extra
-              ! #admin admin
-              ! #metadata mempty
-              ! #tokenAddress tokenContract
-              ! #level (currentLevel + originationOffset)
-                -- We add some levels to offset for the delay caused by the origination function
-                -- So the expectation is that by the time origination has finished, we will be closer
-                -- to the actual block that includes origination so that the tests have a lesser chance
-                -- to fail due to this difference.
-              ! #quorumThreshold qt
-            )
-            { sGuardian = guardianContract
-            }
-        , fsConfig = config
-        }
-  let
-    originateData = UntypedOriginateData
-      { uodName = "BaseDAO"
-      , uodBalance = toMutez 0
-      , uodStorage = untypeValue $ toVal $ fullStorage
-      , uodContract = convertContract baseDAOContractLigo
-      }
-
-  daoUntyped <- originateUntyped originateData
-  advanceToLevel (currentLevel + originationOffset)
-
-  let dao = TAddress @Parameter daoUntyped
-
-  pure $ DaoOriginateData owner1 operator1 owner2 operator2 dao (TAddress tokenContract)
-      admin (TAddress guardianContract) (unPeriod $ cPeriod config)
+      pure $ DaoOriginateData owner1 operator1 owner2 operator2 dao tokenContract
+          admin guardianContract (unPeriod $ cPeriod config)
 
 originateLigoDaoWithConfigDesc
- :: MonadCleveland caps base m
- => ContractExtra
+ :: forall cep caps m. (OriginationCEConstraints cep, MonadCleveland caps m)
+ => VariantToExtra cep
  -> ConfigDesc Config
- -> OriginateFn m
+ -> OriginateFn cep m
 originateLigoDaoWithConfigDesc extra config =
-  originateLigoDaoWithConfig extra (fillConfig config defaultConfig)
+  originateLigoDaoWithConfig @cep extra (fillConfig config defaultConfig)
 
-originateLigoDao :: MonadCleveland caps base m => OriginateFn m
+originateLigoDao :: forall cep caps m. (OriginationCEConstraints cep, MonadCleveland caps m) => OriginateFn cep m
 originateLigoDao =
-  originateLigoDaoWithConfig dynRecUnsafe defaultConfig
+  originateLigoDaoWithConfig @cep def defaultConfig
 
 createSampleProposal
-  :: (MonadCleveland caps base m, HasCallStack)
-  => Int -> Address -> TAddress Parameter -> m ProposalKey
+  :: (MonadCleveland caps m, HasCallStack)
+  => Int -> ImplicitAddress -> ContractHandle Parameter Storage vd -> m ProposalKey
 createSampleProposal counter dodOwner dao = do
   let (pk, action) = createSampleProposal_ counter dodOwner dao
   withSender dodOwner action
@@ -220,19 +224,19 @@ createSampleProposal counter dodOwner dao = do
 
 createSampleProposal_
   :: (MonadOps m, HasCallStack)
-  => Int -> Address -> TAddress Parameter -> (ProposalKey, m ())
+  => Int -> ImplicitAddress -> ContractHandle Parameter Storage vd -> (ProposalKey, m ())
 createSampleProposal_ counter dodOwner1 dao =
   let params = ProposeParams
-        { ppFrom = dodOwner1
+        { ppFrom = toAddress dodOwner1
         , ppFrozenToken = 10
         , ppProposalMetadata = lPackValueRaw @Integer $ fromIntegral counter
         }
-  in (makeProposalKey params, call dao (Call @"Propose") params)
+  in (makeProposalKey params, transfer dao $ calling (ep @"Propose") params)
 
 -- TODO consider making this polymorphic on the input/output size
 createSampleProposals
-  :: (MonadCleveland caps base m, HasCallStack)
-  => (Int, Int) -> Address -> TAddress Parameter -> m (ProposalKey, ProposalKey)
+  :: (MonadCleveland caps m, HasCallStack)
+  => (Int, Int) -> ImplicitAddress -> ContractHandle Parameter Storage vd -> m (ProposalKey, ProposalKey)
 createSampleProposals (counter1, counter2) dodOwner1 dao = do
   let (pk1, action1) = createSampleProposal_ counter1 dodOwner1 dao
   let (pk2, action2) = createSampleProposal_ counter2 dodOwner1 dao
@@ -243,13 +247,19 @@ createSampleProposals (counter1, counter2) dodOwner1 dao = do
   pure (pk1, pk2)
 
 checkStorage
-  :: forall st caps base m.
-      ( AsRPC st ~ st, MonadCleveland caps base m
-      , HasCallStack, Eq st, NiceStorage st, NiceUnpackedValue st)
-  => Address -> st -> m ()
+  :: forall st caps m p.
+      ( AsRPC st ~ st, MonadCleveland caps m
+      , HasCallStack, Eq st, NiceStorage st)
+  => ContractHandle p st () -> st -> m ()
 checkStorage addr expected = do
-  realSt <- getStorage @st addr
+  realSt <- getStorage addr
   assert (expected == realSt) "Unexpected storage"
 
 metadataSize :: ByteString -> Natural
 metadataSize md = fromIntegral $ BS.length md
+
+refillables :: (Traversable f, MonadCleveland caps m) => m (f ImplicitAddress) -> m (f ImplicitAddress)
+refillables action = do
+  addrs <- action
+  void $ withCap getMiscCap \cap -> traverse (cmiMarkAddressRefillable cap) addrs
+  pure addrs

@@ -1,0 +1,349 @@
+(Pair (Pair (Pair (Pair (Pair "tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb"
+                              (Pair (Pair (Pair 0 1000010000000200000000000000000) 900000 900000)
+                                    (Pair 10000 5)
+                                    20
+                                    15)
+                              50000)
+                        {}
+                        { Elt "frozen_extra_value" 0x05008080a0f6f4acdbe01b ;
+                          Elt "frozen_scale_value" 0x050000 ;
+                          Elt "max_proposal_size" 0x05008427 ;
+                          Elt "max_xtz_amount" 0x050080d3a675 ;
+                          Elt "min_xtz_amount" 0x050000 ;
+                          Elt "registry" 0x050200000000 ;
+                          Elt "registry_affected" 0x050200000000 ;
+                          Elt "slash_division_value" 0x0500a401 ;
+                          Elt "slash_scale_value" 0x050000 }
+                        { Elt "configuration_proposal"
+                              (Pair (Pair { PUSH (lambda (pair (pair string nat) (map string bytes)) (map string bytes))
+                                                 { UNPAIR ;
+                                                   UNPAIR ;
+                                                   DUG 2 ;
+                                                   PACK ;
+                                                   SOME ;
+                                                   DIG 2 ;
+                                                   PAIR 3 ;
+                                                   UNPAIR 3 ;
+                                                   UPDATE } ;
+                                            PAIR ;
+                                            { UNPAIR ;
+                                              SWAP ;
+                                              DUP ;
+                                              CAR ;
+                                              CDR ;
+                                              UNPACK
+                                                (pair (pair (pair (option %frozen_extra_value nat) (option %frozen_scale_value nat))
+                                                            (option %max_proposal_size nat)
+                                                            (option %slash_division_value nat))
+                                                      (option %slash_scale_value nat)) ;
+                                              IF_NONE
+                                                { DROP 2 ; PUSH string "configuration decoding failed" ; FAILWITH }
+                                                { DUP ;
+                                                  CAR ;
+                                                  CAR ;
+                                                  CDR ;
+                                                  IF_NONE
+                                                    { SWAP ; CAR ; CAR }
+                                                    { DIG 2 ;
+                                                      CAR ;
+                                                      CAR ;
+                                                      SWAP ;
+                                                      PUSH string "frozen_scale_value" ;
+                                                      PAIR ;
+                                                      PAIR ;
+                                                      DUP 3 ;
+                                                      SWAP ;
+                                                      EXEC } ;
+                                                  DUP 2 ;
+                                                  CAR ;
+                                                  CAR ;
+                                                  CAR ;
+                                                  IF_NONE
+                                                    {}
+                                                    { PUSH string "frozen_scale_value" ; PAIR ; PAIR ; DUP 3 ; SWAP ; EXEC } ;
+                                                  DUP 2 ;
+                                                  CAR ;
+                                                  CDR ;
+                                                  CAR ;
+                                                  IF_NONE
+                                                    {}
+                                                    { PUSH string "max_proposal_size" ; PAIR ; PAIR ; DUP 3 ; SWAP ; EXEC } ;
+                                                  DUP 2 ;
+                                                  CDR ;
+                                                  IF_NONE
+                                                    {}
+                                                    { PUSH string "slash_scale_value" ; PAIR ; PAIR ; DUP 3 ; SWAP ; EXEC } ;
+                                                  SWAP ;
+                                                  CAR ;
+                                                  CDR ;
+                                                  CDR ;
+                                                  IF_NONE
+                                                    { SWAP ; DROP }
+                                                    { PUSH string "slash_division_value" ; PAIR ; PAIR ; EXEC } ;
+                                                  NIL operation ;
+                                                  SWAP ;
+                                                  NONE address ;
+                                                  PAIR ;
+                                                  PAIR } } }
+                                          { DROP ; UNIT })
+                                    True) ;
+                          Elt "transfer_proposal"
+                              (Pair (Pair { DUP ;
+                                            CAR ;
+                                            CDR ;
+                                            UNPACK
+                                              (pair (pair (nat %agora_post_id) (list %registry_diff (pair string (option string))))
+                                                    (list %transfers
+                                                       (or (pair %xtz_transfer_type (mutez %amount) (address %recipient))
+                                                           (or (pair %token_transfer_type
+                                                                  (address %contract_address)
+                                                                  (list %transfer_list
+                                                                     (pair (address %from_) (list %txs (pair (address %to_) (nat %token_id) (nat %amount))))))
+                                                               (pair %legacy_token_transfer_type
+                                                                  (address %contract_address)
+                                                                  (pair %transfer (address %from) (pair %target (address %to) (nat %value)))))))) ;
+                                            IF_NONE
+                                              { DROP ; PUSH string "decoding transfer_proposal failed" ; FAILWITH }
+                                              { DUP ;
+                                                CAR ;
+                                                CDR ;
+                                                DUP 3 ;
+                                                CDR ;
+                                                PACK ;
+                                                BLAKE2B ;
+                                                DIG 3 ;
+                                                CAR ;
+                                                CAR ;
+                                                DUP ;
+                                                PUSH string "registry" ;
+                                                GET ;
+                                                IF_NONE
+                                                  { PUSH string "registry not found" ; FAILWITH }
+                                                  { UNPACK (map string string) ;
+                                                    IF_NONE { PUSH string "registry decoding failed" ; FAILWITH } {} } ;
+                                                DUP 4 ;
+                                                ITER { UNPAIR ; UPDATE } ;
+                                                PACK ;
+                                                SOME ;
+                                                PUSH string "registry" ;
+                                                PAIR 3 ;
+                                                UNPAIR 3 ;
+                                                UPDATE ;
+                                                DUP ;
+                                                PUSH string "registry_affected" ;
+                                                GET ;
+                                                IF_NONE
+                                                  { PUSH string "registry_affected data not found" ; FAILWITH }
+                                                  { UNPACK (map string bytes) ;
+                                                    IF_NONE { PUSH string "registry_affected decoding failed" ; FAILWITH } {} } ;
+                                                DIG 3 ;
+                                                ITER { SWAP ; DUP 4 ; SOME ; DIG 2 ; CAR ; UPDATE } ;
+                                                DIG 2 ;
+                                                DROP ;
+                                                PACK ;
+                                                SOME ;
+                                                PUSH string "registry_affected" ;
+                                                PAIR 3 ;
+                                                NIL operation ;
+                                                DIG 2 ;
+                                                CDR ;
+                                                ITER { IF_LEFT
+                                                         { DUP ;
+                                                           CDR ;
+                                                           CONTRACT unit ;
+                                                           IF_NONE
+                                                             { DROP 2 ; PUSH nat 121 ; FAILWITH }
+                                                             { DIG 2 ; SWAP ; DIG 2 ; CAR ; UNIT ; TRANSFER_TOKENS ; CONS } }
+                                                         { IF_LEFT
+                                                             { DUP ;
+                                                               CAR ;
+                                                               CONTRACT %transfer
+                                                                 (list (pair (address %from_) (list %txs (pair (address %to_) (nat %token_id) (nat %amount))))) ;
+                                                               IF_NONE
+                                                                 { DROP 2 ; PUSH nat 121 ; FAILWITH }
+                                                                 { DIG 2 ; SWAP ; PUSH mutez 0 ; DIG 3 ; CDR ; TRANSFER_TOKENS ; CONS } }
+                                                             { DUP ;
+                                                               CAR ;
+                                                               CONTRACT %transfer (pair (address %from) (pair %target (address %to) (nat %value))) ;
+                                                               IF_NONE
+                                                                 { DROP 2 ; PUSH nat 121 ; FAILWITH }
+                                                                 { DIG 2 ; SWAP ; PUSH mutez 0 ; DIG 3 ; CDR ; TRANSFER_TOKENS ; CONS } } } } ;
+                                                SWAP ;
+                                                UNPAIR 3 ;
+                                                UPDATE ;
+                                                NONE address ;
+                                                PAIR ;
+                                                PAIR } }
+                                          { PUSH (lambda (pair string (map string bytes)) mutez)
+                                                 { UNPAIR ;
+                                                   GET ;
+                                                   IF_NONE
+                                                     { PUSH string "expected Tez value was not found" ; FAILWITH }
+                                                     { UNPACK mutez ;
+                                                       IF_NONE { PUSH string "decoding Tez value failed" ; FAILWITH } {} } } ;
+                                            PAIR ;
+                                            { UNPAIR ;
+                                              SWAP ;
+                                              UNPAIR ;
+                                              UNPACK
+                                                (pair (pair (nat %agora_post_id) (list %registry_diff (pair string (option string))))
+                                                      (list %transfers
+                                                         (or (pair %xtz_transfer_type (mutez %amount) (address %recipient))
+                                                             (or (pair %token_transfer_type
+                                                                    (address %contract_address)
+                                                                    (list %transfer_list
+                                                                       (pair (address %from_) (list %txs (pair (address %to_) (nat %token_id) (nat %amount))))))
+                                                                 (pair %legacy_token_transfer_type
+                                                                    (address %contract_address)
+                                                                    (pair %transfer (address %from) (pair %target (address %to) (nat %value)))))))) ;
+                                              IF_NONE
+                                                { DROP 2 ; PUSH string "transfer_proposal decoding failed" ; FAILWITH }
+                                                { DUP 2 ;
+                                                  PUSH string "min_xtz_amount" ;
+                                                  PAIR ;
+                                                  DUP 4 ;
+                                                  SWAP ;
+                                                  EXEC ;
+                                                  DIG 2 ;
+                                                  PUSH string "max_xtz_amount" ;
+                                                  PAIR ;
+                                                  DIG 3 ;
+                                                  SWAP ;
+                                                  EXEC ;
+                                                  DIG 2 ;
+                                                  CDR ;
+                                                  ITER { IF_LEFT
+                                                           { PUSH mutez 0 ;
+                                                             DUP 2 ;
+                                                             CAR ;
+                                                             COMPARE ;
+                                                             EQ ;
+                                                             IF { DROP ; PUSH string "ZERO_MUTEZ" ; SOME }
+                                                                { DUP 3 ;
+                                                                  DUP 2 ;
+                                                                  CAR ;
+                                                                  COMPARE ;
+                                                                  LT ;
+                                                                  IF { DROP ; PUSH string "LOW_XTZ" ; SOME }
+                                                                     { DUP 2 ;
+                                                                       SWAP ;
+                                                                       CAR ;
+                                                                       COMPARE ;
+                                                                       GT ;
+                                                                       IF { PUSH string "HIGH_XTZ" ; SOME } { NONE string } } } ;
+                                                             IF_NONE {} { PUSH nat 102 ; PAIR ; FAILWITH } }
+                                                           { IF_LEFT { DROP } { DROP } } } ;
+                                                  DROP 2 ;
+                                                  UNIT } } })
+                                    True) ;
+                          Elt "update_contract_delegate_proposal"
+                              (Pair (Pair { DUP ;
+                                            CAR ;
+                                            CDR ;
+                                            UNPACK (option key_hash) ;
+                                            IF_NONE
+                                              { DROP ; PUSH string "decoding contract delegate failed" ; FAILWITH }
+                                              { NIL operation ;
+                                                SWAP ;
+                                                SET_DELEGATE ;
+                                                CONS ;
+                                                SWAP ;
+                                                CAR ;
+                                                CAR ;
+                                                NONE address ;
+                                                PAIR ;
+                                                PAIR } }
+                                          { DROP ; UNIT })
+                                    True) ;
+                          Elt "update_guardian_proposal"
+                              (Pair (Pair { DUP ;
+                                            CAR ;
+                                            CDR ;
+                                            UNPACK address ;
+                                            IF_NONE
+                                              { DROP ; PUSH string "decoding guardian address failed" ; FAILWITH }
+                                              { NIL operation ; DIG 2 ; CAR ; CAR ; DIG 2 ; SOME ; PAIR ; PAIR } }
+                                          { DROP ; UNIT })
+                                    True) ;
+                          Elt "update_receivers_proposal"
+                              (Pair (Pair { PUSH (lambda
+                                                    (pair (pair (set address) (list address)) (lambda (pair (set address) address) (set address)))
+                                                    (set address))
+                                                 { UNPAIR ;
+                                                   UNPAIR ;
+                                                   SWAP ;
+                                                   ITER { SWAP ; PAIR ; DUP 2 ; SWAP ; EXEC } ;
+                                                   SWAP ;
+                                                   DROP } ;
+                                            PAIR ;
+                                            { UNPAIR ;
+                                              SWAP ;
+                                              DUP ;
+                                              CAR ;
+                                              CDR ;
+                                              UNPACK (or (list %add_receivers address) (list %remove_receivers address)) ;
+                                              IF_NONE
+                                                { DROP 2 ; PUSH string "decoding update_receiver_param failed" ; FAILWITH }
+                                                { DUP 2 ;
+                                                  CAR ;
+                                                  CAR ;
+                                                  PUSH string "proposal_receivers" ;
+                                                  GET ;
+                                                  IF_NONE
+                                                    { PUSH string "proposal_receivers not found" ; FAILWITH }
+                                                    { UNPACK (set address) ;
+                                                      IF_NONE { PUSH string "proposal_receivers decoding failed" ; FAILWITH } {} } ;
+                                                  SWAP ;
+                                                  IF_LEFT
+                                                    { LAMBDA
+                                                        (pair (set address) address)
+                                                        (set address)
+                                                        { UNPAIR ; SWAP ; PUSH bool True ; SWAP ; UPDATE } ;
+                                                      SWAP ;
+                                                      DIG 2 ;
+                                                      PAIR ;
+                                                      PAIR ;
+                                                      DIG 2 ;
+                                                      SWAP ;
+                                                      EXEC }
+                                                    { LAMBDA
+                                                        (pair (set address) address)
+                                                        (set address)
+                                                        { UNPAIR ; SWAP ; PUSH bool False ; SWAP ; UPDATE } ;
+                                                      SWAP ;
+                                                      DIG 2 ;
+                                                      PAIR ;
+                                                      PAIR ;
+                                                      DIG 2 ;
+                                                      SWAP ;
+                                                      EXEC } ;
+                                                  NIL operation ;
+                                                  DIG 2 ;
+                                                  CAR ;
+                                                  CAR ;
+                                                  DIG 2 ;
+                                                  PACK ;
+                                                  SOME ;
+                                                  PUSH string "proposal_receivers" ;
+                                                  PAIR 3 ;
+                                                  UNPAIR 3 ;
+                                                  UPDATE ;
+                                                  NONE address ;
+                                                  PAIR ;
+                                                  PAIR } } }
+                                          { DROP ; UNIT })
+                                    True) })
+                  (Pair {} 0)
+                  0
+                  "KT1QVMpfK12j9v8wy8s4v2EK3EHHH8jvisnW"
+                  0)
+            (Pair (Pair "tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb"
+                        { Elt ""
+                              0x74657a6f732d73746f726167653a2f2f4b54315771354e374669517443453432337176665839733738723868517550546346776e2f6d657461646174614b6579 })
+                  None
+                  "tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb")
+            (Pair 0 {})
+            (Pair (Pair 1 20000) 0)
+            {})
+      1940819)
+

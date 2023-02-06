@@ -1,5 +1,5 @@
--- SPDX-FileCopyrightText: 2021 TQ Tezos
--- SPDX-License-Identifier: LicenseRef-MIT-TQ
+-- SPDX-FileCopyrightText: 2021 Tezos Commons
+-- SPDX-License-Identifier: LicenseRef-MIT-TC
 
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
@@ -9,6 +9,7 @@ module SMT.Model.BaseDAO.Types
   , ModelState (..)
   , SimpleContractType (..)
   , SimpleFA2Contract (..)
+  , SimpleFA12Contract (..)
   , OtherContract (..)
   , SimpleOperation (..)
   , runModelT
@@ -17,7 +18,6 @@ module SMT.Model.BaseDAO.Types
   , modifyStore
   , execOperation
 
-  , ContractType (..)
   , ModelCall (..)
   , ModelSource (..)
   , ModelError (..)
@@ -27,26 +27,28 @@ module SMT.Model.BaseDAO.Types
 import Universum hiding (show)
 
 import Control.Monad.Except (MonadError)
-import qualified Data.Map as Map
+import Data.Map qualified as Map
 import Fmt
 import Text.Show (show)
 
-import Lorentz hiding (cast, get, not)
-import qualified Lorentz.Contracts.Spec.FA2Interface as FA2
-import Morley.Tezos.Address (ContractHash(..))
+import Lorentz hiding (cast, get, not, subMutez)
+import Lorentz.Contracts.Spec.AbstractLedgerInterface qualified as FA12
+import Lorentz.Contracts.Spec.FA2Interface qualified as FA2
+import Morley.Tezos.Address
 import Morley.Tezos.Core
+import Morley.Tezos.Crypto (HashTag)
 
-import Ligo.BaseDAO.Types
 import Ligo.BaseDAO.ErrorCodes
+import Ligo.BaseDAO.Types
 
 -- | Transformer used in haskell implementation of BaseDAO
-newtype ModelT a = ModelT
-  { unModelT :: (ExceptT ModelError $ State ModelState) a
-  } deriving newtype (Functor, Applicative, Monad, MonadState ModelState, MonadError ModelError)
+newtype ModelT var a = ModelT
+  { unModelT :: (ExceptT ModelError $ State (ModelState var)) a
+  } deriving newtype (Functor, Applicative, Monad, MonadState (ModelState var), MonadError ModelError)
 
 -- | A type that keep track of blockchain state
-data ModelState = ModelState
-  { msFullStorage :: FullStorage
+data ModelState var = ModelState
+  { msStorage :: StorageSkeleton (VariantToExtra var)
   , msMutez :: Mutez
   -- ^ Dao balance
 
@@ -58,23 +60,26 @@ data ModelState = ModelState
   -- ^ Keep track of originated contract in the blockchain.
   -- See `SimpleContractType` for detail.
 
-  , msProposalCheck :: (ProposeParams, ContractExtra) -> ModelT ()
-  , msRejectedProposalSlashValue :: (Proposal, ContractExtra) -> ModelT Natural
-  , msDecisionLambda :: DecisionLambdaInput -> ModelT ([SimpleOperation], ContractExtra, Maybe Address)
-  , msCustomEps :: Map MText (ByteString -> ModelT ())
-  } deriving stock (Generic, Show)
+  , msProposalCheck :: (ProposeParams, VariantToExtra var) -> ModelT var ()
+  , msRejectedProposalSlashValue :: (Proposal, VariantToExtra var) -> ModelT var Natural
+  , msDecisionCallback :: DecisionCallbackInput' (VariantToExtra var) -> ModelT var ([SimpleOperation], VariantToExtra var, Maybe Address)
+  , msCustomEps :: VariantToParam var -> ModelT var ()
+  } deriving stock (Generic)
 
 -- Needed by `forall`
-instance Show ((ProposeParams, ContractExtra) -> ModelT ()) where
-  show _ = "<msProposalCheck>"
-instance Show ((Proposal, ContractExtra) -> ModelT Natural) where
-  show _ = "<msRejectedProposalSlashValue>"
-instance Show (DecisionLambdaInput -> ModelT ([SimpleOperation], ContractExtra, Maybe Address)) where
-  show _ = "<msDecisionLambda>"
-instance Show (ByteString -> ModelT ()) where
-  show _ = "<customEps>"
+--
+deriving stock instance Show (VariantToExtra var) => Show (ModelState var)
 
-runModelT :: ModelT a -> ModelState -> (Either ModelError ModelState)
+instance Show ((ProposeParams, a) -> ModelT var ()) where
+  show _ = "<callback>"
+instance Show ((Proposal, a) -> ModelT cep Natural) where
+  show _ = "<msRejectedProposalSlashValue>"
+instance Show (DecisionCallbackInput' b -> ModelT var ([SimpleOperation], a, Maybe Address)) where
+  show _ = "<msDecisionCallback>"
+instance {-# INCOHERENT #-} Show (a -> ModelT var ()) where
+  show _ = "<callback>"
+
+runModelT :: ModelT cep a -> ModelState cep -> (Either ModelError (ModelState cep))
 runModelT (ModelT model) initState =
   runExceptT model
     & (`runState` initState)
@@ -83,7 +88,7 @@ runModelT (ModelT model) initState =
           Right _ -> Right updatedMs
       )
 
-execOperation :: SimpleOperation -> ModelT ()
+execOperation :: SimpleOperation -> ModelT cep ()
 execOperation op = do
   contracts <- get <&> msContracts
 
@@ -98,7 +103,17 @@ execOperation op = do
                       }
                 in (Map.insert addr (SimpleFA2ContractType updatedSc) contracts, tez)
               _ ->
-                (contracts, toMutez 0)
+                (contracts, zeroMutez)
+          FA12TransferOperation addr param tez ->
+            case Map.lookup addr contracts of
+              Just (SimpleFA12ContractType sfc) ->
+                let updatedSc = sfc
+                      { sfclStorage = param : (sfc & sfclStorage)
+                      , sfclMutez = unsafeAddMutez tez (sfc & sfclMutez)
+                      }
+                in (Map.insert addr (SimpleFA12ContractType updatedSc) contracts, tez)
+              _ ->
+                (contracts, zeroMutez)
           OtherOperation addr param tez ->
             case Map.lookup addr contracts of
               Just (OtherContractType oc) ->
@@ -108,7 +123,7 @@ execOperation op = do
                       }
                 in (Map.insert addr (OtherContractType updatedSc) contracts, tez)
               _ ->
-                (contracts, toMutez 0)
+                (contracts, zeroMutez)
 
   currentBal <- get <&> msMutez
   let newBal = case currentBal `subMutez` minusBal of
@@ -117,24 +132,24 @@ execOperation op = do
 
   modify $ \ms -> ms { msContracts = updatedContracts, msMutez = newBal }
 
-getStore :: ModelT Storage
-getStore = get <&> msFullStorage <&> fsStorage
+getStore :: ModelT var (StorageSkeleton (VariantToExtra var))
+getStore = get <&> msStorage
 
-getConfig :: ModelT Config
-getConfig = get <&> msFullStorage <&> fsConfig
+getConfig :: ModelT cep Config
+getConfig = get <&> msStorage <&> sConfig
 
-modifyStore :: (Storage -> ModelT Storage) -> ModelT ()
+modifyStore :: (StorageSkeleton (VariantToExtra var) -> ModelT var (StorageSkeleton (VariantToExtra var))) -> ModelT var ()
 modifyStore f = do
-  ms <- get
-  updatedStorage <- f (ms & msFullStorage & fsStorage)
+  ms :: ModelState var <- get
+  updatedStorage :: StorageSkeleton (VariantToExtra var) <- f (msStorage $ ms)
   put $ ms
-    { msFullStorage = (ms & msFullStorage)
-        { fsStorage = updatedStorage }
+    { msStorage =  updatedStorage
     }
 
 -- Simple operation that only allows transfering to `FA2.TransferItem` entrypoint
 data SimpleOperation
   = FA2TransferOperation Address [FA2.TransferItem] Mutez
+  | FA12TransferOperation Address FA12.TransferParams Mutez
   | OtherOperation Address Text Mutez
   deriving stock (Eq, Show, Generic)
 
@@ -147,6 +162,7 @@ instance Buildable SimpleOperation where
 -- Other contract call params will be convert to text.
 data SimpleContractType
   = SimpleFA2ContractType SimpleFA2Contract
+  | SimpleFA12ContractType SimpleFA12Contract
   | OtherContractType OtherContract
   deriving stock (Eq, Show, Generic)
 
@@ -158,9 +174,16 @@ data SimpleFA2Contract = SimpleFA2Contract
   , sfcMutez :: Mutez
   } deriving stock (Eq, Show, Generic)
 
+data SimpleFA12Contract = SimpleFA12Contract
+  { sfclStorage :: [FA12.TransferParams]
+  , sfclMutez :: Mutez
+  } deriving stock (Eq, Show, Generic)
+
 instance Buildable SimpleFA2Contract where
   build = genericF
 
+instance Buildable SimpleFA12Contract where
+  build = genericF
 
 data OtherContract = OtherContract
   { ocStorage :: [Text]
@@ -171,40 +194,36 @@ instance Buildable OtherContract where
   build = genericF
 
 -- | Definition of an entrypoint call to emulate in the SMTs
-data ModelCall = ModelCall
+data ModelCall var = ModelCall
   { mcAdvanceLevel :: Maybe Natural -- Advance level before calling the entrypoint
-  , mcParameter :: Parameter
+  , mcParameter :: Parameter' (VariantToParam var)
   , mcSource :: ModelSource
-  } deriving stock (Eq, Show, Generic)
+  } deriving stock (Generic)
+
+deriving stock instance Show (VariantToParam var) => Show (ModelCall var)
+
+instance Buildable (HashTag a) where
+  build = build . show
 
 instance Buildable ContractHash where
   build = genericF
 
-instance Buildable ModelCall where
+instance Buildable (Parameter' (VariantToParam var)) => Buildable (ModelCall var) where
   build = genericF
 
 -- | Definition of an @source@ and @sender@ for a call to emulate in the SMTs
 data ModelSource = ModelSource
-  { msoSender :: Address
-  , msoSource :: Address
+  { msoSender :: ImplicitAddress
+  , msoSource :: ImplicitAddress
   } deriving stock (Eq, Show, Generic)
 
 instance Buildable ModelSource where
   build = genericF
 
--- | We need this type since we need to do certain things for specific dao
--- Ex. `CallCustom`, Needed to `sendXtz` for treasury/registry dao
-data ContractType
-  = BaseDaoContract
-  | RegistryDaoContract
-  | TreasuryDaoContract
-  deriving stock Eq
-
 -- | The possible contract errors for the models
 data ModelError
   = NOT_DELEGATE
   | EMPTY_FLUSH
-  | MAX_PROPOSALS_REACHED
   | NOT_ENOUGH_FROZEN_TOKENS
   | NOT_PROPOSING_STAGE
   | PROPOSAL_NOT_UNIQUE
@@ -216,10 +235,7 @@ data ModelError
   | NOT_ADMIN
   | NOT_PENDING_ADMIN
   | BAD_TOKEN_CONTRACT
-  | ENTRYPOINT_NOT_FOUND
-  | UNPACKING_FAILED
   | FAIL_PROPOSAL_CHECK
-  | MISSING_VALUE
   | UNSTAKE_INVALID_PROPOSAL
   | VOTER_DOES_NOT_EXIST
   deriving stock (Generic, Eq, Show)
@@ -227,14 +243,10 @@ data ModelError
 instance Buildable ModelError where
   build = genericF
 
-instance (Buildable a, Buildable b) => Buildable (Either a b) where
-  build = genericF
-
 contractErrorToModelError :: Integer -> ModelError
 contractErrorToModelError errorCode
   | (errorCode == toInteger notDelegate) = NOT_DELEGATE
   | (errorCode == toInteger emptyFlush) = EMPTY_FLUSH
-  | (errorCode == toInteger maxProposalsReached) = MAX_PROPOSALS_REACHED
   | (errorCode == toInteger notEnoughFrozenTokens) = NOT_ENOUGH_FROZEN_TOKENS
   | (errorCode == toInteger notProposingStage) = NOT_PROPOSING_STAGE
   | (errorCode == toInteger proposalNotUnique) = PROPOSAL_NOT_UNIQUE
@@ -246,8 +258,6 @@ contractErrorToModelError errorCode
   | (errorCode == toInteger notAdmin) = NOT_ADMIN
   | (errorCode == toInteger notPendingAdmin) = NOT_PENDING_ADMIN
   | (errorCode == toInteger badTokenContract) = BAD_TOKEN_CONTRACT
-  | (errorCode == toInteger entrypointNotFound) = ENTRYPOINT_NOT_FOUND
-  | (errorCode == toInteger unpackingFailed) = UNPACKING_FAILED
   | (errorCode == toInteger failProposalCheck) = FAIL_PROPOSAL_CHECK
   | (errorCode == toInteger unstakeInvalidProposal) = UNSTAKE_INVALID_PROPOSAL
   | (errorCode == toInteger voterDoesNotExist) = VOTER_DOES_NOT_EXIST

@@ -1,5 +1,5 @@
-// SPDX-FileCopyrightText: 2021 TQ Tezos
-// SPDX-License-Identifier: LicenseRef-MIT-TQ
+// SPDX-FileCopyrightText: 2021 Tezos Commons
+// SPDX-License-Identifier: LicenseRef-MIT-TC
 
 #include "types.mligo"
 #include "common.mligo"
@@ -12,7 +12,7 @@
 let transfer_ownership (param, store : transfer_ownership_param * storage) : return =
   let store = authorize_admin(store) in
   let store =
-    if Tezos.self_address = param
+    if Tezos.get_self_address unit = param
     // If new admin is address of baseDAO, set as admin right away.
     then { store with admin = param ; }
     else { store with pending_owner = param ; }
@@ -24,30 +24,6 @@ let transfer_ownership (param, store : transfer_ownership_param * storage) : ret
  * new admin.
  *)
 let accept_ownership(store : storage) : return =
-  if store.pending_owner = Tezos.sender
-  then (nil_op, { store with admin = Tezos.sender })
+  if store.pending_owner = Tezos.get_sender unit
+  then (nil_op, { store with admin = Tezos.get_sender unit })
   else (failwith not_pending_admin : return)
-
-(*
- * Call a custom entrypoint.
- *
- * First it looks up the packed code for the entrypoint using the entrypoint
- * name in the parameter.
- * Then it unpacks the code to a lambda of type '(bytes * full_storage) -> return'.
- * Finally it executes this lambda, with the bytes from the function parameter,
- * and returns the resulting value.
- *
- * NO AUTH CHECKS ARE DONE.
- *)
-let call_custom(param, store, config : custom_ep_param * storage * config) : return =
-  let ep_name = param.0 in
-  let packed_param = param.1 in
-
-  let packed_ep =
-    match Map.find_opt ep_name config.custom_entrypoints with
-    | Some (ep_code) -> ep_code
-    | None -> (failwith entrypoint_not_found : bytes)
-  in
-  match ((Bytes.unpack packed_ep) : (bytes * full_storage -> return) option) with
-  | Some lambda -> lambda (packed_param, (store, config))
-  | None -> (failwith unpacking_failed : return)

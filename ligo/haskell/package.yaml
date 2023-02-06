@@ -1,5 +1,5 @@
-# SPDX-FileCopyrightText: 2021 TQ Tezos
-# SPDX-License-Identifier: LicenseRef-MIT-TQ
+# SPDX-FileCopyrightText: 2021 Tezos Commons
+# SPDX-License-Identifier: LicenseRef-MIT-TC
 
 name:                baseDAO-ligo-meta
 version:             0.4.0.0
@@ -7,14 +7,24 @@ license:             MIT
 license-file:        LICENSE
 author:              Serokell, Tocqueville Group
 git:                 git@github.com:tezos-commons/baseDAO.git
-copyright:           2021 TQ Tezos
+copyright:           2020-2021 TQ Tezos, 2021-2022 Tezos Commons
 
 extra-doc-files:
 - README.md
 extra-source-files:
-- resources/baseDAO.tz
+- resources/lambdaDAO.tz
+- resources/lambdaDAO_storage.tz
+- resources/lambdaregistryDAO.tz
+- resources/lambdaregistryDAO_storage.tz
+- resources/lambdatreasuryDAO.tz
+- resources/lambdatreasuryDAO_storage.tz
+- resources/registryDAO.tz
+- resources/treasuryDAO.tz
+- resources/trivialDAO.tz
+- resources/trivialDAO_storage.tz
 - resources/registryDAO_storage.tz
 - resources/treasuryDAO_storage.tz
+- resources/plist_contract.tz
 
 description:         Tools and tests for the LIGO baseDAO contract.
 
@@ -42,6 +52,7 @@ default-extensions:
   - FlexibleInstances
   - GADTs
   - GeneralizedNewtypeDeriving
+  - ImportQualifiedPost
   - LambdaCase
   - MultiParamTypeClasses
   - MultiWayIf
@@ -105,7 +116,6 @@ library:
     - fmt
     - lorentz
     - morley
-    - morley-client
     - morley-ledgers
     - morley-metadata
     - morley-prelude
@@ -142,6 +152,7 @@ tests:
     - baseDAO-ligo-meta
     - bytestring
     - cleveland
+    - aeson
     - containers
     - cryptonite
     - fmt
@@ -149,11 +160,16 @@ tests:
     - lorentz
     - morley
     - morley-ledgers
-    - morley-metadata
     - morley-prelude
+    - morley-metadata
+    - morley-metadata-test
     - mtl
     - named
     - tasty
     - tasty-hedgehog
     - tasty-hunit-compat
+    - tasty-rerun
     - universum
+    - aeson
+    - morley-metadata-test
+    - morley-metadata
