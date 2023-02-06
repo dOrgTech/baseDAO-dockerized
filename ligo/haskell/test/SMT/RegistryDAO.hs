@@ -17,8 +17,8 @@ import Hedgehog.Range qualified as Range
 import Hedgehog.Gen.Michelson (genMText)
 import Hedgehog.Gen.Tezos.Address (genAddress)
 import Lorentz hiding (and, div, now, (>>))
-import Morley.Util.Named
 import Morley.Michelson.Typed.Haskell.Value
+import Morley.Util.Named
 
 import Ligo.BaseDAO.Common.Types
 import Ligo.BaseDAO.Contract (baseDAORegistryStorageLigo)
@@ -29,6 +29,7 @@ import SMT.Common.Helper
 import SMT.Common.Run
 import SMT.Common.Types
 import SMT.Model.BaseDAO.Types
+import Test.Cleveland.Lorentz.Types
 import Test.Ligo.BaseDAO.Common (ContractType(..), makeProposalKey, metadataSize)
 import Test.Ligo.RegistryDAO.Types
 
@@ -95,6 +96,7 @@ registryDaoProposalCheck (params, extras) = do
       let isValid = (tp & tpTransfers)
               <&> (\case
                       Token_transfer_type _ -> True
+                      Legacy_token_transfer_type _ -> True
                       Xtz_transfer_type xt ->
                            (xt & xtAmount) >= minXtzAmount
                         && (xt & xtAmount) <= maxXtzAmount
@@ -239,10 +241,10 @@ genCustomCallsRegistryDao = do
           Lookup_registry (mkLookupRegistryParam miaViewContractAddr)
     ]
 
-genLookupRegistryParam :: GeneratorT 'Registry (TAddress (MText, Maybe MText) () -> LookupRegistryParam)
+genLookupRegistryParam :: GeneratorT 'Registry (ContractHandle (MText, Maybe MText) s () -> LookupRegistryParam)
 genLookupRegistryParam = do
   key <- genMText def
-  pure $ \viewContractAddr -> (LookupRegistryParam key (unTAddress viewContractAddr))
+  pure $ \viewContractAddr -> (LookupRegistryParam key (toAddress viewContractAddr))
 
 genRegistryDaoProposalMetadata :: GeneratorT 'Registry (Address -> Address -> RegistryDaoProposalMetadata)
 genRegistryDaoProposalMetadata = do

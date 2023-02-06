@@ -24,7 +24,6 @@ import Data.Map qualified as M
 
 import Fmt (Buildable, build, genericF)
 import Lorentz as L
-import Lorentz.Lambda
 import Morley.AsRPC
 
 import Ligo.BaseDAO.RegistryDAO.Types
@@ -118,8 +117,6 @@ deriving anyclass instance IsoValue HandlerInfo
 instance HasAnnotation HandlerInfo where
   annOptions = baseDaoAnnOptions
 
-deriving stock instance Generic (WrappedLambda i o)
-
 instance Buildable (WrappedLambda i o) where
   build = genericF
 
@@ -127,7 +124,8 @@ instance Buildable HandlerInfo where
   build = genericF
 
 customGeneric "LambdaExtra" ligoLayout
-deriveRPCWithStrategy "LambdaExtra" ligoLayout
+-- TODO [morley#922]: remove droRecursive=False here
+deriveRPCWithOptions "LambdaExtra" def{droStrategy=ligoLayout, droRecursive=False}
 deriving anyclass instance IsoValue LambdaExtra
 
 instance HasAnnotation LambdaExtra where

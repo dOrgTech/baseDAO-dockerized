@@ -1,15 +1,12 @@
-
 -- SPDX-FileCopyrightText: 2021 Tezos Commons
 -- SPDX-License-Identifier: LicenseRef-MIT-TC
---
-{-# OPTIONS_GHC -Wno-orphans -Wno-incomplete-uni-patterns -Wno-unused-top-binds #-}
--- For all the incomplete list pattern matches in the calls to with
--- withOriginated func
+
 module Test.Ligo.RegistryDAO.Tests.Common
   ( RegistryTestConstraints
   , expectFailProposalCheck
   , xtzTransferType
   , tokenTransferType
+  , fa12TokenTransferType
   ) where
 
 import Prelude
@@ -73,4 +70,10 @@ tokenTransferType contractAddr fromAddr toAddr = Token_transfer_type TokenTransf
         ]
       }
     ]
+  }
+
+fa12TokenTransferType :: Address -> Address -> Address -> TransferType
+fa12TokenTransferType contractAddr fromAddr toAddr = Legacy_token_transfer_type LegacyTokenTransfer
+  { lttContractAddress = contractAddr
+  , lttTransfer = (#from :! fromAddr, #to :! toAddr, #value :! 10)
   }

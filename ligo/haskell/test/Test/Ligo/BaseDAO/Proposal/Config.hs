@@ -110,7 +110,8 @@ testConfig
   => ConfigDesc config
 testConfig =
   ConfigDesc configConsts
-    { cmQuorumThreshold = Just (DAO.mkQuorumThreshold 1 100) }
+    { cmQuorumThreshold = Just (DAO.mkQuorumThreshold 1 100)
+    }
 
 -- | Config with longer voting period and bigger quorum threshold
 -- Needed for vote related tests that do not call `flush`
@@ -119,7 +120,9 @@ voteConfig
   => ConfigDesc config
 voteConfig = ConfigDesc $
   ConfigDesc configConsts
-    { cmQuorumThreshold = Just (DAO.mkQuorumThreshold 4 100) }
+    { cmQuorumThreshold = Just (DAO.mkQuorumThreshold 4 100)
+    , cmPeriod = Just $ DAO.Period 60
+    }
 
 --------------------------------------------------------------------------------
 --
@@ -153,7 +156,7 @@ instance IsConfigDescExt DAO.ContractExtra RejectedProposalSlashValue where
 
 instance IsConfigDescExt DAO.ContractExtra DecisionCallbackAction where
   fillConfig (DecisionCallbackAction lam) c = DAO.DynamicRec' $
-    BigMap Nothing $ Map.insert [mt|decision_callback|] (lPackValueRaw lam) $ bmMap $ DAO.unDynamic c
+    BigMap Nothing $ Map.insert [mt|decision_callback|] (lPackValueRaw $ mkLambda lam) $ bmMap $ DAO.unDynamic c
 
 instance IsConfigDescExt DAO.Config ("changePercent" :! Natural) where
   fillConfig (arg #changePercent -> cp) DAO.Config{..} =

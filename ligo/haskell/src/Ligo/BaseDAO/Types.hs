@@ -95,7 +95,7 @@ import Lorentz hiding (div, now)
 import Lorentz.Annotation ()
 import Lorentz.Contracts.Spec.FA2Interface qualified as FA2
 import Lorentz.Contracts.Spec.TZIP16Interface qualified as TZIP16
-import Morley.AsRPC (HasRPCRepr(..), deriveRPC, deriveRPCWithStrategy)
+import Morley.AsRPC (HasRPCRepr(..), deriveRPCWithOptions, DeriveRPCOptions(..))
 import Morley.Michelson.Typed.Annotation
 import Morley.Michelson.Typed.Scope
   (HasNoBigMap, HasNoContract, HasNoNestedBigMaps, HasNoOp, HasNoTicket)
@@ -103,6 +103,7 @@ import Morley.Michelson.Typed.T (T(TUnit))
 import Morley.Michelson.Untyped.Annotation
 import Morley.Util.Markdown
 import Morley.Util.Named
+import Morley.Tezos.Address
 import Test.Cleveland.Instances ()
 
 -- | A data type to track and specify the different DAO variants in existence
@@ -657,7 +658,8 @@ instance Buildable ProposalDoublyLinkedList where
 instance HasAnnotation ProposalDoublyLinkedList where
   annOptions = baseDaoAnnOptions
 
-deriveRPC "ProposalDoublyLinkedList"
+-- TODO [morley#922]: remove droRecursive=False here
+deriveRPCWithOptions "ProposalDoublyLinkedList" def{droRecursive=False}
 
 instance HasRPCRepr (DynamicRec s) where
   type AsRPC (DynamicRec s) = DynamicRecView s
@@ -713,7 +715,7 @@ instance HasAnnotation Config where
 instance Buildable Config where
   build = genericF
 
-deriveRPCWithStrategy "Config" ligoLayout
+deriveRPCWithOptions "Config" def{droStrategy=ligoLayout}
 
 instance Buildable Proposal where
   build = genericF
@@ -756,7 +758,8 @@ instance HasAnnotation ce => HasAnnotation (StorageSkeleton ce) where
   annOptions = baseDaoAnnOptions
 deriving anyclass instance IsoValue ce => IsoValue (StorageSkeleton ce)
 
-deriveRPCWithStrategy "StorageSkeleton" ligoLayout
+-- TODO [morley#922]: remove droRecursive=False here
+deriveRPCWithOptions "StorageSkeleton" def{droStrategy=ligoLayout, droRecursive=False}
 type StorageRPC = StorageSkeletonRPC (VariantToExtra 'Base)
 
 type Storage = StorageSkeleton (VariantToExtra 'Base)
@@ -765,7 +768,7 @@ instance HasFieldOfType (StorageSkeleton (ContractExtra' BigMap)) name field => 
   storeFieldOps = storeFieldOpsADT
 
 mkStorage
-  :: "admin" :! Address
+  :: "admin" :! ImplicitAddress
   -> "extra" :! ce
   -> "metadata" :! TZIP16.MetadataMap
   -> "level" :! Natural
@@ -782,12 +785,12 @@ mkStorage
   (arg #quorumThreshold -> qt)
   (arg #config -> config) =
   Storage
-    { sAdmin = admin
+    { sAdmin = toAddress admin
     , sConfig = config
-    , sGuardian = admin
+    , sGuardian = toAddress admin
     , sExtra = extra
     , sMetadata = metadata
-    , sPendingOwner = admin
+    , sPendingOwner = toAddress admin
     , sPermitsCounter = Nonce 0
     , sProposals = mempty
     , sOngoingProposalsDlist = Nothing
@@ -805,7 +808,7 @@ mkStorage
     }
 
 mkMetadataMap
-  :: "metadataHostAddress" :! Address
+  :: "metadataHostAddress" :! ContractAddress
   -> "metadataHostChain" :? TZIP16.ExtChainId
   -> "metadataKey" :! MText
   -> TZIP16.MetadataMap
@@ -880,7 +883,7 @@ setExtra :: (ce -> ce) -> StorageSkeleton ce -> StorageSkeleton ce
 setExtra fn fsk = fsk { sExtra = fn $ sExtra fsk }
 
 mkStorage'
-  :: forall cep. "admin" :! Address
+  :: forall cep. "admin" :! ImplicitAddress
   -> "votingPeriod" :? Period
   -> "quorumThreshold" :? QuorumThreshold
   -> "maxChangePercent" :? Natural
@@ -932,4 +935,3 @@ type CEConstraints cep =
   , IsoValue (AsRPC (VariantToExtra cep))
   , HasNoOp (ToT (VariantToExtra cep))
   )
-
