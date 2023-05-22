@@ -1,19 +1,19 @@
 (Pair (Pair (Pair (Pair (Pair "tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb"
-                              (Pair (Pair (Pair 0 1000010000000200000000000000000) 900000 900000)
-                                    (Pair 10000 5)
-                                    20
-                                    15)
+                              (Pair (Pair (Pair 0 1000010000000200000000000000000) 990000 990000)
+                                    (Pair 10000 2)
+                                    14
+                                    8)
                               50000)
                         {}
-                        { Elt "frozen_extra_value" 0x05008080a0f6f4acdbe01b ;
+                        { Elt "frozen_extra_value" 0x05008080a0cfc8e0c8e38a01 ;
                           Elt "frozen_scale_value" 0x050000 ;
                           Elt "max_proposal_size" 0x05008427 ;
-                          Elt "max_xtz_amount" 0x050080d3a675 ;
-                          Elt "min_xtz_amount" 0x050000 ;
+                          Elt "max_xtz_amount" 0x050080dac409 ;
+                          Elt "min_xtz_amount" 0x050080897a ;
                           Elt "registry" 0x050200000000 ;
                           Elt "registry_affected" 0x050200000000 ;
                           Elt "slash_division_value" 0x0500a401 ;
-                          Elt "slash_scale_value" 0x050000 }
+                          Elt "slash_scale_value" 0x05009c01 }
                         { Elt "configuration_proposal"
                               (Pair (Pair { PUSH (lambda (pair (pair string nat) (map string bytes)) (map string bytes))
                                                  { UNPAIR ;
@@ -60,7 +60,7 @@
                                                   CAR ;
                                                   IF_NONE
                                                     {}
-                                                    { PUSH string "frozen_scale_value" ; PAIR ; PAIR ; DUP 3 ; SWAP ; EXEC } ;
+                                                    { PUSH string "frozen_extra_value" ; PAIR ; PAIR ; DUP 3 ; SWAP ; EXEC } ;
                                                   DUP 2 ;
                                                   CAR ;
                                                   CDR ;
@@ -339,11 +339,11 @@
                   0)
             (Pair (Pair "tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb"
                         { Elt ""
-                              0x74657a6f732d73746f726167653a2f2f4b54315771354e374669517443453432337176665839733738723868517550546346776e2f6d657461646174614b6579 })
+                              0x74657a6f732d73746f726167653a2f2f4b54314e7271394a3963687a766a537153626668336476504e6d616635337456627545482f6d657461646174614b6579 })
                   None
                   "tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb")
             (Pair 0 {})
             (Pair (Pair 1 20000) 0)
             {})
-      1940819)
+      1745361)
 
