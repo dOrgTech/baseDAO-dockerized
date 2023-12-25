@@ -17,6 +17,13 @@ export interface Storage {
 
 export type Template = "registry" | "treasury" | "lambda"
 
+/**
+ * Generates steps based on the provided template and storage parameters.
+ * @param {Template} template - The template type (registry, treasury, or lambda).
+ * @param {Storage} storage - Storage parameters.
+ * @param {string} originatorAddress - The address of the originator.
+ * @returns An object containing the storage output.
+ */
 export const generateSteps = async (template: Template, storage: Storage, originatorAddress: string) => {
   const ligoDirPath = join(process.cwd(), "ligo")
   const storagePathArgument = join("out", `${template === "lambda" ? "lambdaregistry": template}DAO_storage.tz`)
