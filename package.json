@@ -12,6 +12,8 @@
     "dotenv": "8.2.0",
     "express": "4.17.1",
     "rimraf": "^3.0.2",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.0",
     "ts-node": "^10.9.1",
     "ts-node-dev": "^2.0.0"
   },
