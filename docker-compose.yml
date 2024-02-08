@@ -5,8 +5,22 @@ services:
     build: .
     ports:
       - "3500:3500"  # Map the exposed port 3500 from the Dockerfile to the same port on the host
-    volumes:
-      - .:/app  # Bind mount the application directory for live updates
-      - /app/node_modules  # Named volume for node_modules to avoid overwriting
+    # volumes:
+    #   - .:/app  # Bind mount the application directory for live updates
+    #   - /app/node_modules  # Named volume for node_modules to avoid overwriting
     environment:
       - NODE_ENV=development  # Set environment variables if needed
+    develop:
+      watch:
+        - action: sync
+          path: ./src
+          target: /app/
+          ignore:
+            - node_modules/
+        - action: sync
+          path: ./ligo
+          target: /app/
+          ignore:
+            - node_modules/
+        - action: rebuild
+          path: package.json

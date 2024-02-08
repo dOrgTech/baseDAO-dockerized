@@ -4,6 +4,7 @@ export async function runCommand(
   command: string,
   quiet = false
 ): Promise<void> {
+  console.log(`> ${command}`);
   if (!quiet) {
     console.log(`> ${command}`);
   }

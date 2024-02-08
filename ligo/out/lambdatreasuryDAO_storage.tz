@@ -2,7 +2,13 @@
                               (Pair (Pair (Pair 0 1000) 190000 990000) (Pair 10000 15840) 47520 36000)
                               50000)
                         {}
-                        {}
+                        { Elt "frozen_extra_value" 0x050000 ;
+                          Elt "frozen_scale_value" 0x050001 ;
+                          Elt "max_proposal_size" 0x0500a401 ;
+                          Elt "max_xtz_amount" 0x0500a401 ;
+                          Elt "min_xtz_amount" 0x050000 ;
+                          Elt "slash_division_value" 0x050001 ;
+                          Elt "slash_scale_value" 0x050001 }
                         { Elt "transfer_proposal"
                               (Pair (Pair { DUP ;
                                             CAR ;
@@ -11,10 +17,13 @@
                                               (pair (nat %agora_post_id)
                                                     (list %transfers
                                                        (or (pair %xtz_transfer_type (mutez %amount) (address %recipient))
-                                                           (pair %token_transfer_type
-                                                              (address %contract_address)
-                                                              (list %transfer_list
-                                                                 (pair (address %from_) (list %txs (pair (address %to_) (nat %token_id) (nat %amount))))))))) ;
+                                                           (or (pair %token_transfer_type
+                                                                  (address %contract_address)
+                                                                  (list %transfer_list
+                                                                     (pair (address %from_) (list %txs (pair (address %to_) (nat %token_id) (nat %amount))))))
+                                                               (pair %legacy_token_transfer_type
+                                                                  (address %contract_address)
+                                                                  (pair %transfer (address %from) (pair %target (address %to) (nat %value)))))))) ;
                                             IF_NONE
                                               { DROP ; PUSH string "" ; FAILWITH }
                                               { NIL operation ;
@@ -27,13 +36,20 @@
                                                            IF_NONE
                                                              { DROP 2 ; PUSH nat 121 ; FAILWITH }
                                                              { DIG 2 ; SWAP ; DIG 2 ; CAR ; UNIT ; TRANSFER_TOKENS ; CONS } }
-                                                         { DUP ;
-                                                           CAR ;
-                                                           CONTRACT %transfer
-                                                             (list (pair (address %from_) (list %txs (pair (address %to_) (nat %token_id) (nat %amount))))) ;
-                                                           IF_NONE
-                                                             { DROP 2 ; PUSH nat 121 ; FAILWITH }
-                                                             { DIG 2 ; SWAP ; PUSH mutez 0 ; DIG 3 ; CDR ; TRANSFER_TOKENS ; CONS } } } ;
+                                                         { IF_LEFT
+                                                             { DUP ;
+                                                               CAR ;
+                                                               CONTRACT %transfer
+                                                                 (list (pair (address %from_) (list %txs (pair (address %to_) (nat %token_id) (nat %amount))))) ;
+                                                               IF_NONE
+                                                                 { DROP 2 ; PUSH nat 121 ; FAILWITH }
+                                                                 { DIG 2 ; SWAP ; PUSH mutez 0 ; DIG 3 ; CDR ; TRANSFER_TOKENS ; CONS } }
+                                                             { DUP ;
+                                                               CAR ;
+                                                               CONTRACT %transfer (pair (address %from) (pair %target (address %to) (nat %value))) ;
+                                                               IF_NONE
+                                                                 { DROP 2 ; PUSH nat 121 ; FAILWITH }
+                                                                 { DIG 2 ; SWAP ; PUSH mutez 0 ; DIG 3 ; CDR ; TRANSFER_TOKENS ; CONS } } } } ;
                                                 SWAP ;
                                                 CAR ;
                                                 CAR ;
@@ -54,10 +70,13 @@
                                                 (pair (nat %agora_post_id)
                                                       (list %transfers
                                                          (or (pair %xtz_transfer_type (mutez %amount) (address %recipient))
-                                                             (pair %token_transfer_type
-                                                                (address %contract_address)
-                                                                (list %transfer_list
-                                                                   (pair (address %from_) (list %txs (pair (address %to_) (nat %token_id) (nat %amount))))))))) ;
+                                                             (or (pair %token_transfer_type
+                                                                    (address %contract_address)
+                                                                    (list %transfer_list
+                                                                       (pair (address %from_) (list %txs (pair (address %to_) (nat %token_id) (nat %amount))))))
+                                                                 (pair %legacy_token_transfer_type
+                                                                    (address %contract_address)
+                                                                    (pair %transfer (address %from) (pair %target (address %to) (nat %value)))))))) ;
                                               IF_NONE
                                                 { DROP 2 ; PUSH string "" ; FAILWITH }
                                                 { DUP 2 ;
@@ -94,7 +113,7 @@
                                                                        GT ;
                                                                        IF { PUSH string "HIGH_XTZ" ; SOME } { NONE string } } } ;
                                                              IF_NONE {} { PUSH nat 102 ; PAIR ; FAILWITH } }
-                                                           { DROP } } ;
+                                                           { IF_LEFT { DROP } { DROP } } } ;
                                                   DROP 2 ;
                                                   UNIT } } })
                                     True) ;

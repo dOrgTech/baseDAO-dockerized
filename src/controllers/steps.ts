@@ -7,15 +7,29 @@ const getSteps = async (request: Request, response: Response) => {
   try {
     const storage = request.query as any;
     const { originator, template } = request.params
+    console.log({
+      "Template": template,
+      "Orig": originator,
+      "Stor": storage
+    })
 
     const stepsAndStorage = await generateSteps(template as Template, storage, originator);
     response.status(200).json(stepsAndStorage);
   } catch (e) {
-    console.log(e);
-
-    response.status(500).json({
-      message: "An error has ocurred",
-    });
+    console.log('Error Name', e.name);
+    if(e.name === 'ResponseError'){
+      response.status(400).json({
+        message: e?.message,
+      });
+    }
+    else{
+      response.status(500).json({
+        message: "An error has ocurred",
+      });
+    }
+  }
+  finally{
+    response.end()
   }
 };
 

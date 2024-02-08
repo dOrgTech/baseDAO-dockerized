@@ -1852,95 +1852,93 @@ code { PUSH nat 1000000 ;
                                                     { IF_LEFT
                                                         { DIG 2 ;
                                                           DROP ;
-                                                          SWAP ;
+                                                          DUP ;
+                                                          CAR ;
+                                                          CAR ;
+                                                          CDR ;
+                                                          IF_NONE
+                                                            { DIG 2 }
+                                                            { DUP 4 ;
+                                                              CDR ;
+                                                              DUP 5 ;
+                                                              CAR ;
+                                                              CDR ;
+                                                              DUP 6 ;
+                                                              CAR ;
+                                                              CAR ;
+                                                              CDR ;
+                                                              DIG 3 ;
+                                                              DIG 6 ;
+                                                              CAR ;
+                                                              CAR ;
+                                                              CAR ;
+                                                              CAR ;
+                                                              PAIR ;
+                                                              PAIR ;
+                                                              PAIR ;
+                                                              PAIR } ;
+                                                          DUP 2 ;
+                                                          CAR ;
+                                                          CAR ;
+                                                          CAR ;
+                                                          IF_NONE
+                                                            {}
+                                                            { DUP 2 ;
+                                                              CDR ;
+                                                              DUP 3 ;
+                                                              CAR ;
+                                                              CDR ;
+                                                              DUP 4 ;
+                                                              CAR ;
+                                                              CAR ;
+                                                              CDR ;
+                                                              DIG 4 ;
+                                                              CAR ;
+                                                              CAR ;
+                                                              CAR ;
+                                                              CDR ;
+                                                              DIG 4 ;
+                                                              PAIR ;
+                                                              PAIR ;
+                                                              PAIR ;
+                                                              PAIR } ;
+                                                          DUP 2 ;
+                                                          CAR ;
+                                                          CDR ;
+                                                          CAR ;
+                                                          IF_NONE
+                                                            {}
+                                                            { DUP 2 ;
+                                                              CDR ;
+                                                              DUP 3 ;
+                                                              CAR ;
+                                                              CDR ;
+                                                              DUP 4 ;
+                                                              CAR ;
+                                                              CAR ;
+                                                              CDR ;
+                                                              CDR ;
+                                                              DIG 3 ;
+                                                              PAIR ;
+                                                              DIG 3 ;
+                                                              CAR ;
+                                                              CAR ;
+                                                              CAR ;
+                                                              PAIR ;
+                                                              PAIR ;
+                                                              PAIR } ;
+                                                          DUP 2 ;
+                                                          CDR ;
+                                                          IF_NONE {} { DUP 2 ; CDR ; CAR ; PAIR ; SWAP ; CAR ; PAIR } ;
+                                                          DIG 2 ;
                                                           NONE address ;
-                                                          DUP 3 ;
+                                                          DIG 3 ;
                                                           CAR ;
                                                           CDR ;
                                                           CDR ;
                                                           IF_NONE
-                                                            { DUP 3 ;
-                                                              CDR ;
-                                                              IF_NONE
-                                                                { DUP 3 ;
-                                                                  CAR ;
-                                                                  CDR ;
-                                                                  CAR ;
-                                                                  IF_NONE
-                                                                    { DUP 3 ;
-                                                                      CAR ;
-                                                                      CAR ;
-                                                                      CAR ;
-                                                                      IF_NONE
-                                                                        { DIG 2 ;
-                                                                          CAR ;
-                                                                          CAR ;
-                                                                          CDR ;
-                                                                          IF_NONE
-                                                                            { DIG 2 }
-                                                                            { DUP 4 ;
-                                                                              CDR ;
-                                                                              DUP 5 ;
-                                                                              CAR ;
-                                                                              CDR ;
-                                                                              DUP 6 ;
-                                                                              CAR ;
-                                                                              CAR ;
-                                                                              CDR ;
-                                                                              DIG 3 ;
-                                                                              DIG 6 ;
-                                                                              CAR ;
-                                                                              CAR ;
-                                                                              CAR ;
-                                                                              CAR ;
-                                                                              PAIR ;
-                                                                              PAIR ;
-                                                                              PAIR ;
-                                                                              PAIR } }
-                                                                        { DIG 3 ;
-                                                                          DROP ;
-                                                                          DUP 4 ;
-                                                                          CDR ;
-                                                                          DUP 5 ;
-                                                                          CAR ;
-                                                                          CDR ;
-                                                                          DUP 6 ;
-                                                                          CAR ;
-                                                                          CAR ;
-                                                                          CDR ;
-                                                                          DIG 6 ;
-                                                                          CAR ;
-                                                                          CAR ;
-                                                                          CAR ;
-                                                                          CDR ;
-                                                                          DIG 4 ;
-                                                                          PAIR ;
-                                                                          PAIR ;
-                                                                          PAIR ;
-                                                                          PAIR } }
-                                                                    { DIG 3 ;
-                                                                      DROP ;
-                                                                      DUP 4 ;
-                                                                      CDR ;
-                                                                      DUP 5 ;
-                                                                      CAR ;
-                                                                      CDR ;
-                                                                      DUP 6 ;
-                                                                      CAR ;
-                                                                      CAR ;
-                                                                      CDR ;
-                                                                      CDR ;
-                                                                      DIG 3 ;
-                                                                      PAIR ;
-                                                                      DIG 5 ;
-                                                                      CAR ;
-                                                                      CAR ;
-                                                                      CAR ;
-                                                                      PAIR ;
-                                                                      PAIR ;
-                                                                      PAIR } }
-                                                                { DIG 3 ; DROP ; DUP 4 ; CDR ; CAR ; PAIR ; DIG 3 ; CAR ; PAIR } }
-                                                            { DIG 3 ; DROP ; DUP 4 ; CDR ; CDR ; SWAP ; PAIR ; DIG 3 ; CAR ; PAIR } }
+                                                            { DIG 2 }
+                                                            { DUP 4 ; CDR ; CDR ; SWAP ; PAIR ; DIG 3 ; CAR ; PAIR } }
                                                         { DUP ;
                                                           CAR ;
                                                           CDR ;

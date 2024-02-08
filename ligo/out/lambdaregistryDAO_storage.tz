@@ -1,19 +1,16 @@
-(Pair (Pair (Pair (Pair (Pair "tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb"
-                              (Pair (Pair (Pair 0 1000010000000200000000000000000) 990000 990000)
-                                    (Pair 10000 2)
-                                    14
-                                    8)
+(Pair (Pair (Pair (Pair (Pair "tz1QozfhaUW4wLnohDo6yiBUmh7cPCSXE9Af"
+                              (Pair (Pair (Pair 0 1000) 190000 990000) (Pair 10000 15840) 47520 36000)
                               50000)
                         {}
-                        { Elt "frozen_extra_value" 0x05008080a0cfc8e0c8e38a01 ;
-                          Elt "frozen_scale_value" 0x050000 ;
-                          Elt "max_proposal_size" 0x05008427 ;
-                          Elt "max_xtz_amount" 0x050080dac409 ;
-                          Elt "min_xtz_amount" 0x050080897a ;
+                        { Elt "frozen_extra_value" 0x050000 ;
+                          Elt "frozen_scale_value" 0x050001 ;
+                          Elt "max_proposal_size" 0x0500a401 ;
+                          Elt "max_xtz_amount" 0x0500a401 ;
+                          Elt "min_xtz_amount" 0x050000 ;
                           Elt "registry" 0x050200000000 ;
                           Elt "registry_affected" 0x050200000000 ;
-                          Elt "slash_division_value" 0x0500a401 ;
-                          Elt "slash_scale_value" 0x05009c01 }
+                          Elt "slash_division_value" 0x050001 ;
+                          Elt "slash_scale_value" 0x050001 }
                         { Elt "configuration_proposal"
                               (Pair (Pair { PUSH (lambda (pair (pair string nat) (map string bytes)) (map string bytes))
                                                  { UNPAIR ;
@@ -335,15 +332,13 @@
                                     True) })
                   (Pair {} 0)
                   0
-                  "KT1QVMpfK12j9v8wy8s4v2EK3EHHH8jvisnW"
+                  "KT1RdwP8XJPjFyGoUsXFQnQo1yNm6gUqVdp5"
                   0)
-            (Pair (Pair "tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb"
-                        { Elt ""
-                              0x74657a6f732d73746f726167653a2f2f4b54314e7271394a3963687a766a537153626668336476504e6d616635337456627545482f6d657461646174614b6579 })
+            (Pair (Pair "KT1QbdJ7M7uAQZwLpvzerUyk7LYkJWDL7eDh" {})
                   None
-                  "tz1VSUr8wwNhLAzempoch5d6hLRiTh8Cjcjb")
+                  "tz1QozfhaUW4wLnohDo6yiBUmh7cPCSXE9Af")
             (Pair 0 {})
-            (Pair (Pair 1 20000) 0)
+            (Pair (Pair 1 100000) 0)
             {})
-      1745361)
+      100)
 

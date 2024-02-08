@@ -2,8 +2,6 @@ FROM ubuntu:20.04
 ENV NODE_VERSION=12.6.0
 RUN apt update && apt install -y curl wget
 
-#COPY SOURCES
-COPY . ./app
 
 #INSTALL NODE
 RUN curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.34.0/install.sh | bash
@@ -18,12 +16,15 @@ RUN curl -sSL https://get.haskellstack.org/ | sh
 RUN wget https://gitlab.com/ligolang/ligo/-/jobs/2702841321/artifacts/raw/ligo
 RUN chmod +x ./ligo && cp ./ligo /usr/local/bin
 
+#COPY SOURCES
+COPY . ./app
+
 #GENERATE CONTRACTS
 RUN cd app/ligo && make all
 
 #RUN NODE API
 WORKDIR /app
-RUN npm i
+RUN npm ci
 EXPOSE 3500
 
 CMD [ "npm", "start" ]
