@@ -1,5 +1,6 @@
 import { Request, Response, Router } from "express";
 import { generateSteps, Template } from "../services/generateSteps";
+import { CliError, ResponseError } from "../error";
 
 const router = Router();
 
@@ -16,10 +17,16 @@ const getSteps = async (request: Request, response: Response) => {
     const stepsAndStorage = await generateSteps(template as Template, storage, originator);
     response.status(200).json(stepsAndStorage);
   } catch (e) {
-    console.log('Error Name', e.name);
-    if(e.name === 'ResponseError'){
+
+    if(e instanceof ResponseError){
       response.status(400).json({
         message: e?.message,
+      });
+    }
+    else if(e.name === 'CliError'){
+      response.status(500).json({
+        message: 'Something Went Wrong',
+        context: e?.executionId
       });
     }
     else{

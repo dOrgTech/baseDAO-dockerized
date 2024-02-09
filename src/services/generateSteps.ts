@@ -1,10 +1,9 @@
 import { join } from "path"
-import fs from 'fs';
-import { readdirSync, readFileSync, existsSync, mkdirSync, rmdir } from "fs";
+import { readFileSync } from "fs";
 import { ulid } from 'ulid'
 import { runCommand } from "../commands/command";
-import rimraf from "rimraf"
-import {ResponseError} from "../error"
+import { ResponseError } from "../error"
+import { deleteDirectory, makeDirectoryIfNotExists, readFileContent } from "../utils/file.util";
 
 export interface Storage {
   admin_address: string;
@@ -20,25 +19,6 @@ export interface Storage {
 
 export type Template = "registry" | "treasury" | "lambda"
 
-const makeDirectoryIfNotExists = (dirPath) => {
-  if (!existsSync(dirPath)) {
-    mkdirSync(dirPath, { recursive: true });
-  }
-};
-
-async function deleteDirectory(dirPath) {
-  try {
-    fs.rmdir(dirPath, { recursive: true }, (err) => {
-      if (err) {
-        throw err;
-      }    
-      console.log(`${dirPath} is deleted!`);
-    });
-  } catch (error) {
-    console.error(`Error deleting directory ${dirPath}: ${error}`);
-  }
-}
-
 /**
  * Generates steps based on the provided template and storage parameters.
  * @param {Template} template - The template type (registry, treasury, or lambda).
@@ -46,35 +26,35 @@ async function deleteDirectory(dirPath) {
  * @param {string} originatorAddress - The address of the originator.
  * @returns An object containing the storage output.
  */
-export const generateSteps = async (template: Template, storage: Storage, originatorAddress: string) => {
+export const generateSteps = async (
+  template: Template,
+  storage: Storage,
+  originatorAddress: string // TODO: Remove this safely
+): Promise<{
+  storage: string,
+}> => {
 
-  if(!storage['admin_address']) throw new ResponseError("admin_address is required");
-  if(!storage['guardian_address']) throw new ResponseError("guardian_address is required");
-  if(!storage['governance_token_id']) throw new ResponseError("governance_token_id is required");
-  if(!storage['governance_token_address']) throw new ResponseError("governance_token_address is required");
-  
+  if (!storage['admin_address']) throw new ResponseError("admin_address is required");
+  if (!storage['guardian_address']) throw new ResponseError("guardian_address is required");
+  if (!storage['governance_token_id']) throw new ResponseError("governance_token_id is required");
+  if (!storage['governance_token_address']) throw new ResponseError("governance_token_address is required");
 
   const ligoDirPath = join(process.cwd(), "ligo")
+
+  // Create a unique execution ID for every request
   const executionId = ulid()
   const storageDir = join("out", executionId)
   makeDirectoryIfNotExists(storageDir)
 
-  const storagePathArgument =  join(storageDir,`${template === "lambda" ? "lambda": template}DAO_storage.tz`)
+  const storagePathArgument = join(storageDir, `${template === "lambda" ? "lambda" : template}DAO_storage.tz`)
   const storagePath = join(ligoDirPath, storagePathArgument)
-  // const stepsPathArgument = join("out", "steps")
-  // const stepsPath = join(ligoDirPath, stepsPathArgument)
-  // const steps: Record<string, string> = {};
   console.log("storagepath", storagePath)
 
-  try {
-    await runCommand(
-      `cd ${join(process.cwd(), "ligo")} && ls &&  make ${Object.keys(storage).map(
-        (key) => `${key}=${storage[key]}`
-      ).join(" ")} OUT=${storageDir} ${storagePathArgument}`
-    );
-  } catch(e) {
-    console.log(e)
-  }
+  const command = `cd ${join(process.cwd(), "ligo")} && ls &&  make ${Object.keys(storage).map(
+    (key) => `${key}=${storage[key]}`
+  ).join(" ")} OUT=${storageDir} ${storagePathArgument}`
+
+  await runCommand(command, false, executionId)
 
   // await runCommand(
   //   `cd ${join(process.cwd(), "ligo")} && make originate-steps storage=${storagePathArgument} \
@@ -86,14 +66,11 @@ export const generateSteps = async (template: Template, storage: Storage, origin
   //   steps[file] = readFileSync(join(stepsPath, file), "utf-8")
   // })
 
-  const storageOutput = readFileSync(storagePath, "utf-8")
+  const storageOutput = readFileContent(storagePath)
 
-  try {
-    deleteDirectory(join(process.cwd(), "ligo", storageDir))
-    // rimraf.sync(stepsPath)
-  } catch(e) {
-    console.log(e)
-  }
+  deleteDirectory(join(process.cwd(), "ligo", storageDir)).catch(err => {
+    console.warn("Error Deleting Directory", err)
+  })
 
   return { storage: storageOutput }
 };

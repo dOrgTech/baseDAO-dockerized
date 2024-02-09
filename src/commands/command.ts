@@ -1,15 +1,17 @@
 import { exec, ExecException } from "child_process";
+import { CliError } from "../error";
 
 export async function runCommand(
   command: string,
-  quiet = false
-): Promise<void> {
+  quiet = false,
+  executionId = "",
+): Promise<string> {
   console.log(`> ${command}`);
   if (!quiet) {
     console.log(`> ${command}`);
   }
 
-  return new Promise<void>((resolve, reject) => {
+  return new Promise<string>((resolve, reject) => {
     const callback = (
       err: ExecException | null,
       stdout: string,
@@ -17,7 +19,7 @@ export async function runCommand(
     ) => {
       if (err) {
         console.error(err);
-        reject(err);
+        reject(new CliError(`[${executionId}] Error running command: ${command}`, executionId));
       } else {
         if (!quiet) {
           // the *entire* stdout and stderr (buffered)
@@ -25,7 +27,7 @@ export async function runCommand(
           console.log(`stderr: ${stderr}`);
         }
 
-        resolve();
+        resolve(stdout);
       }
     };
 
