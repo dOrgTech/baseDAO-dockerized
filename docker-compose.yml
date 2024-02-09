@@ -4,10 +4,7 @@ services:
   web3hub-api:
     build: .
     ports:
-      - "3500:3500"  # Map the exposed port 3500 from the Dockerfile to the same port on the host
-    # volumes:
-    #   - .:/app  # Bind mount the application directory for live updates
-    #   - /app/node_modules  # Named volume for node_modules to avoid overwriting
+      - "3501:3500"  # Map the exposed port 3500 from the Dockerfile to the same port on the host
     environment:
       - NODE_ENV=development  # Set environment variables if needed
     develop:

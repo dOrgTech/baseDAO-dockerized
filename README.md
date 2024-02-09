@@ -24,19 +24,20 @@ cd baseDAO-dockerized
 ## Using Docker Compose
 Start the application in a local development environment:
 ```bash
-docker-compose up
+npm run dev:docker
 ```
 
 ## API Documentation with Swagger
 Access Swagger UI for API documentation and testing at:
 ```
-http://localhost:3500/
+http://localhost:3500/api-docs/
 ```
 
 ## Deployment
 The application is deployed on Heroku with separate remotes for different versions:
-- v2 baseDAO: [https://git.heroku.com/v2-basedao-dockerized.git](https://git.heroku.com/v2-basedao-dockerized.git)
-- v3 baseDAO: [https://git.heroku.com/v3-basedao-dockerised.git](https://git.heroku.com/v3-basedao-dockerised.git)
+- v3 baseDAO: [https://git.heroku.com/v3-basedao-dockerised.git](https://git.heroku.com/v3-basedao-dockerised.git) (`master` branch is auto deployed on heroku)
+- v2 baseDAO: [https://git.heroku.com/v2-basedao-dockerized.git](https://git.heroku.com/v2-basedao-dockerized.git) (Manual Deploy with Git Commit [d2cc9b64](https://github.com/dOrgTech/baseDAO-dockerized/commit/d2cc9b64))
+
 
 ## Local Development Workflow
 1. Make and test changes locally.

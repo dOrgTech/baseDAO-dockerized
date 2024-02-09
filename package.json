@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "start": "ts-node src/server.ts",
-    "dev": "nodemon src/server.ts"
+    "dev": "nodemon src/server.ts",
+    "dev:docker":"docker compose watch"
   },
   "dependencies": {
     "axios": "0.21.1",
