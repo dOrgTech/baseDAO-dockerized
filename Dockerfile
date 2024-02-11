@@ -1,5 +1,5 @@
 FROM ubuntu:20.04
-ENV NODE_VERSION=12.6.0
+ENV NODE_VERSION=14.21.3
 RUN apt update && apt install -y curl wget
 
 
