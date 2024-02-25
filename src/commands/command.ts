@@ -2,7 +2,8 @@ import { exec, ExecException } from "child_process";
 
 export async function runCommand(
   command: string,
-  quiet = false
+  quiet = false,
+  executionId = "",
 ): Promise<void> {
   if (!quiet) {
     console.log(`> ${command}`);
@@ -15,6 +16,7 @@ export async function runCommand(
       stderr: string
     ) => {
       if (err) {
+        console.error('Error in executionID', executionId)
         console.error(err);
         reject(err);
       } else {

@@ -1,7 +1,7 @@
 import { join } from "path"
-import { readdirSync, readFileSync } from "fs";
+import { ulid } from 'ulid'
 import { runCommand } from "../commands/command";
-import rimraf from "rimraf"
+import { deleteDirectory, makeDirectoryIfNotExists, readFileContent } from "../utils/file.util";
 
 export interface Storage {
   admin_address: string;
@@ -24,43 +24,36 @@ export type Template = "registry" | "treasury" | "lambda"
  * @param {string} originatorAddress - The address of the originator.
  * @returns An object containing the storage output.
  */
-export const generateSteps = async (template: Template, storage: Storage, originatorAddress: string) => {
+export const generateSteps = async (
+  template: Template,
+  storage: Storage,
+  originatorAddress: string // TODO: Remove this safely
+): Promise<{
+  storage: string,
+}> => {
   const ligoDirPath = join(process.cwd(), "ligo")
-  const storagePathArgument = join("out", `${template === "lambda" ? "lambdaregistry": template}DAO_storage.tz`)
+
+  // Create a unique execution ID for every request
+  const executionId = ulid()
+  const storageDir = join("out", executionId)
+  makeDirectoryIfNotExists(storageDir)
+
+  const storagePathArgument = join(storageDir, `${template === "lambda" ? "lambdaregistry" : template}DAO_storage.tz`)
   const storagePath = join(ligoDirPath, storagePathArgument)
-  // const stepsPathArgument = join("out", "steps")
-  // const stepsPath = join(ligoDirPath, stepsPathArgument)
-  // const steps: Record<string, string> = {};
+
+  const command = `cd ${join(process.cwd(), "ligo")} && ls &&  make ${Object.keys(storage).map(
+    (key) => `${key}=${storage[key]}`
+  ).join(" ")} OUT=${storageDir} ${storagePathArgument}`
+
+  await runCommand(command, false, executionId)
   console.log("storagepath", storagePath)
 
-  try {
-    rimraf.sync(storagePath)
-    // rimraf.sync(stepsPath)
-  } catch(e) {
-    console.log(e)
-  }
+  const storageOutput = readFileContent(storagePath)
 
-  try {
-    await runCommand(
-      `cd ${join(process.cwd(), "ligo")} && ls && make ${Object.keys(storage).map(
-        (key) => `${key}=${storage[key]}`
-      ).join(" ")} ${storagePathArgument}`
-    );
-  } catch(e) {
-    console.log(e)
-  }
+  deleteDirectory(join(process.cwd(), "ligo", storageDir)).catch(err => {
+    console.warn("Error Deleting Directory", err)
+  })
 
-  // await runCommand(
-  //   `cd ${join(process.cwd(), "ligo")} && make originate-steps storage=${storagePathArgument} \
-  //   admin_address=${originatorAddress} destination=${stepsPathArgument}`
-  // )
-
-  // const stepsFiles = readdirSync(stepsPath)
-  // stepsFiles.forEach(file => {
-  //   steps[file] = readFileSync(join(stepsPath, file), "utf-8")
-  // })
-
-  const storageOutput = readFileSync(storagePath, "utf-8")
 
   return { storage: storageOutput }
 };
